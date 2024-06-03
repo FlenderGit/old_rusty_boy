@@ -1,5 +1,5 @@
 use crate::registers::{Registers, Flag};
-use crate::instruction::{Instruction, InstructionType, RegisterTarget, RegisterTarget16};
+use crate::instruction::{Instruction, InstructionType, JumpCondition, RegisterTarget, RegisterTarget16};
 
 pub struct CPU {
     registers: Registers,
@@ -86,6 +86,7 @@ impl CPU {
             RegisterTarget::H => self.registers.h,
             RegisterTarget::L => self.registers.l,
             RegisterTarget::INSTANT => self.fetch_byte(),
+            RegisterTarget::_HL => self.read_byte(self.registers.hl()),
         }
     }
 
@@ -162,6 +163,31 @@ impl CPU {
                 let register = self.get_value(target);
                 let result = self.add(register, value);
                 self.set_value(target, result);
+            },
+
+            // XOR
+            InstructionType::XOR(target, value) => {
+                let value = self.get_value(value);
+                let register = self.get_value(target);
+                let result = register ^ value;
+                self.set_value(target, result);
+                self.registers.set_flag(Flag::Zero, result == 0);
+                self.registers.set_flag(Flag::Sub, false);
+                self.registers.set_flag(Flag::HalfCarry, false);
+                self.registers.set_flag(Flag::Carry, false);
+            },
+
+            // JUMP
+            InstructionType::JUMP(condition) => {
+                let should_jump = match condition {
+                    JumpCondition::NONE => true,
+                    //Flag::Zero => self.registers.get_flag(Flag::Zero),
+                    //Flag::Carry => self.registers.get_flag(Flag::Carry),
+                    //Flag::HalfCarry => !self.registers.get_flag(Flag::HalfCarry),
+                    //Flag::Sub => !self.registers.get_flag(Flag::Sub),
+                    _ => panic!("Invalid condition for JUMP"),
+                };
+                self.jump(should_jump);
             },
 
             _ => panic!("Unimplemented instruction: {:?}", instruction),
