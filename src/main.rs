@@ -1,21 +1,8 @@
-use gb_emulator::rom::Header;
+use gb_emulator::game::Game;
 
 fn main() {
+
+    let game = Game::new("roms/tetris.gb");
+    println!("{}", game.header.to_string());
     
-    // Read file and instance a new Header
-    let rom = std::fs::read("roms/tetris.gb");
-
-    // Check if the file was read
-    let rom = match rom {
-        Ok(rom) => rom,
-        Err(error) => {
-            eprintln!("Error reading file: {}", error);
-            std::process::exit(1);
-        }
-    };
-
-    let header = Header::new(&rom);
-
-    // Print the header
-    println!("{}", header.to_string());
 }

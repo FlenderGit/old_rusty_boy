@@ -20,7 +20,8 @@ pub struct Header {
 impl Header {
 
     pub fn new(rom: &[u8]) -> Header {
-        Header {
+
+        let header = Header {
             entry_point: (rom[0x102] as u16) | ((rom[0x103] as u16) << 8),
             nintendo_logo: {
                 let mut logo = [0; 48];
@@ -36,14 +37,28 @@ impl Header {
             new_licensee_code: rom[0x144],
             sgb_flag: rom[0x146],
             cartridge_type: rom[0x147],
-            rom_size: rom[0x148],
+            rom_size: Header::get_rom_size(rom[0x148]),
             ram_size: rom[0x149],
             destination_code: rom[0x14a],
             old_licensee_code: rom[0x14b],
             mask_rom_version_number: rom[0x14c],
             header_checksum: rom[0x14d],
             global_checksum: (rom[0x14e] as u16) | ((rom[0x14f] as u16) << 8),
+        };
+
+        if !header.is_valid(rom) {
+            eprintln!("Invalid header checksum");
+            std::process::exit(1);
         }
+
+        let rom_size = header.rom_size as u64 * 16 * 1024;
+        if rom_size as u64 != rom.len() as u64 {
+            let msg = format!("ROM size in header ({}) does not match actual ROM size ({})", rom_size, rom.len());
+            eprintln!("{}", msg);
+            std::process::exit(1);
+        }
+
+        return header;
     }
 
     pub fn is_valid(&self, rom: &[u8]) -> bool {
@@ -52,6 +67,17 @@ impl Header {
             sum = sum.wrapping_sub(rom[i]).wrapping_sub(1);
         }
         sum == self.header_checksum
+    }
+
+    fn get_rom_size(v: u8) -> u8 {
+        match v {
+            0x00 => 2,
+            0x01 => 4,
+            0x02 => 8,
+            0x03 => 16,
+            0x04 => 32,
+            _ => 0,
+        }
     }
 
     pub fn to_string(&self) -> String {
