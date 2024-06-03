@@ -1,6 +1,6 @@
 pub struct Header {
 
-    pub entry_point: u16,
+    pub entry_point: [u8; 3],
     pub nintendo_logo: [u8; 48],
     pub title: [u8; 16],    // Can contains the manufacturer code in new cartridges
     pub cgb_flag: u8,
@@ -22,7 +22,11 @@ impl Header {
     pub fn new(rom: &[u8]) -> Header {
 
         let header = Header {
-            entry_point: (rom[0x102] as u16) | ((rom[0x103] as u16) << 8),
+            entry_point: {
+                let mut entry_point = [0; 3];
+                entry_point.copy_from_slice(&rom[0x100..0x103]);
+                entry_point
+            },
             nintendo_logo: {
                 let mut logo = [0; 48];
                 logo.copy_from_slice(&rom[0x104..0x134]);

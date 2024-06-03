@@ -1,8 +1,10 @@
 
 use crate::header::Header;
+use crate::cpu::CPU;
 
 pub struct Game {
     pub header: Header,
+    pub cpu: CPU,
 }
 
 impl Game {
@@ -19,6 +21,17 @@ impl Game {
 
         Game {
             header: Header::new(&rom),
+            cpu: CPU::new(rom),
         }
+    }
+
+    pub fn run(&mut self) {
+        // println!("Running game: {}", self.header.title.to_string());
+
+        for _ in 0..10 {
+            self.cpu.step();
+        }
+
+
     }
 }

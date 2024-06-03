@@ -1,6 +1,13 @@
 
+pub enum Flag {
+    Zero = 1 << 7,
+    Sub = 1 << 6,
+    HalfCarry = 1 << 5,
+    Carry = 1 << 4,
+}
 
-struct Registers {
+
+pub struct Registers {
     pub a: u8,
     pub b: u8,
     pub c: u8,
@@ -57,16 +64,25 @@ impl Registers {
         self.l = (value & 0x00ff) as u8;
     }
 
-    pub fn set_flag(&mut self, flag: Flag) {
-        self.f |= flag;
+    pub fn up_flag(&mut self, flag: Flag) {
+        self.f |= flag as u8;
     }
 
-    pub fn unset_flag(&mut self, flag: Flag) {
-        self.f &= !flag;
+    pub fn down_flag(&mut self, flag: Flag) {
+        self.f &= !(flag as u8);
+    }
+
+    pub fn set_flag(&mut self, flag: Flag, value: bool) {
+        if value {
+            self.up_flag(flag);
+        } else {
+            self.down_flag(flag);
+        }
     }
 
     pub fn get_flag(&self, flag: Flag) -> bool {
-        self.f & flag
+        //self.f & flag
+        panic!("Not implemented")
     }
 
 }
