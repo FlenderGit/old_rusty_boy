@@ -28,7 +28,7 @@ impl Game {
     pub fn run(&mut self) {
         // println!("Running game: {}", self.header.title.to_string());
 
-        for _ in 0..10 {
+        for _ in 0..20 {
             self.cpu.step();
         }
 

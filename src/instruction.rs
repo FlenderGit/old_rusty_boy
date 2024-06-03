@@ -1,4 +1,5 @@
 
+
 #[derive(Copy, Debug, Clone)]
 pub struct Instruction {    
     pub name: &'static str,
@@ -10,10 +11,10 @@ impl Instruction {
  
     pub fn from(opcode: u8) -> Instruction {
         // Security check
-        if opcode as usize >= list_instruction.len() {
+        if opcode as usize > 0xff {
             panic!("Unknown opcode: {:02X}", opcode);
         }
-        list_instruction[opcode as usize]
+        LIST_INSTRUCTION[opcode as usize]
     }
 
 }
@@ -56,18 +57,22 @@ pub enum InstructionType {
     NOP,
     STOP,
     HALT,
+    #[allow(non_camel_case_types)]
     PREFIX_CB,
     DI,
     EI,
 
     // Jumps/calls
-    JR(JumpCondition, RegisterTarget),
+    JR(JumpCondition),
     JUMP(JumpCondition),
+    CALL(JumpCondition),
+    RST(u16),
 
     // 8bit load/store/move instructions
     LOAD11(RegisterTarget, RegisterTarget),
     LOAD12(RegisterTarget, RegisterTarget16),
     LOAD21(RegisterTarget16, RegisterTarget),
+    LDH(RegisterTarget, RegisterTarget),
 
 
     // 16bit load/store/move instructions
@@ -106,6 +111,8 @@ pub enum InstructionType {
     //SUB(RegisterTarget),
     //AND(RegisterTarget),
     //JUMP(JumpCondition),
+    #[allow(non_camel_case_types)]
+    NOT_IMPLEMENTED,
 
 }
 
@@ -113,8 +120,7 @@ use InstructionType::*;
 use RegisterTarget::*;
 use RegisterTarget16::*;
 
-//const list_instruction: [Instruction; 256]
-const list_instruction: [Instruction; 199] = [
+const LIST_INSTRUCTION: [Instruction; 256] = [
 
     // First line
     Instruction { name: "NOP", itype: NOP, ticks: 4 },
@@ -143,7 +149,7 @@ const list_instruction: [Instruction; 199] = [
     Instruction { name: "DEC D", itype: DEC(D), ticks: 4 },
     Instruction { name: "LD D, n", itype: LOAD11(D, INSTANT), ticks: 8 },
     Instruction { name: "RLA", itype: RLCA, ticks: 4 },
-    Instruction { name: "JR n", itype: JR(JumpCondition::NONE, INSTANT), ticks: 4 },
+    Instruction { name: "JR n", itype: JR(JumpCondition::NONE), ticks: 4 },
     Instruction { name: "ADD HL, DE", itype: ADD22(HL, DE), ticks: 8 },
     Instruction { name: "LD A, (DE)", itype: LOAD12(A, DE), ticks: 8 },
     Instruction { name: "DEC DE", itype: DEC2(DE), ticks: 8 },
@@ -153,7 +159,7 @@ const list_instruction: [Instruction; 199] = [
     Instruction { name: "RRA", itype: RRA, ticks: 4 },
 
     // Third line
-    Instruction { name: "JR NZ, n", itype: JR(JumpCondition::NZ, INSTANT), ticks: 8 },
+    Instruction { name: "JR NZ, n", itype: JR(JumpCondition::NZ), ticks: 8 },
     Instruction { name: "LD HL, nn", itype: LOAD22(HL, INSTANT2), ticks: 12 },
     Instruction { name: "LD (HL+), A", itype: LOAD21(HL, A), ticks: 8 },
     Instruction { name: "INC HL", itype: INC2(HL), ticks: 4 },
@@ -161,7 +167,7 @@ const list_instruction: [Instruction; 199] = [
     Instruction { name: "DEC H", itype: DEC(H), ticks: 4 },
     Instruction { name: "LD H, n", itype: LOAD11(H, INSTANT), ticks: 8 },
     Instruction { name: "DAA", itype: DDA, ticks: 4 },
-    Instruction { name: "JR Z, n", itype: JR(JumpCondition::Z, INSTANT), ticks: 8 },
+    Instruction { name: "JR Z, n", itype: JR(JumpCondition::Z), ticks: 8 },
     Instruction { name: "ADD HL, HL", itype: ADD22(HL, HL), ticks: 8 },
     Instruction { name: "LD A, (HL+)", itype: LOAD12(A, HL), ticks: 8 },
     Instruction { name: "DEC HL", itype: DEC2(HL), ticks: 8 },
@@ -171,7 +177,7 @@ const list_instruction: [Instruction; 199] = [
     Instruction { name: "CPL", itype: CPL, ticks: 4 },
 
     // Fourth line
-    Instruction { name: "JR NC, n", itype: JR(JumpCondition::NC, INSTANT), ticks: 8 },
+    Instruction { name: "JR NC, n", itype: JR(JumpCondition::NC), ticks: 8 },
     Instruction { name: "LD SP, nn", itype: LOAD22(SP, INSTANT2), ticks: 12 },
     Instruction { name: "LD (HL-), A", itype: LOAD21(HL, A), ticks: 8 },
     Instruction { name: "INC SP", itype: INC2(SP), ticks: 4 },
@@ -179,7 +185,7 @@ const list_instruction: [Instruction; 199] = [
     Instruction { name: "DEC (HL)", itype: DEC2(HL), ticks: 12 },
     Instruction { name: "LD (HL), n", itype: LOAD21(HL, INSTANT), ticks: 12 },
     Instruction { name: "SCF", itype: SCF, ticks: 4 },
-    Instruction { name: "JR C, n", itype: JR(JumpCondition::C, INSTANT), ticks: 8 },
+    Instruction { name: "JR C, n", itype: JR(JumpCondition::C), ticks: 8 },
     Instruction { name: "ADD HL, SP", itype: ADD22(HL, SP), ticks: 8 },
     Instruction { name: "LD A, (HL-)", itype: LOAD12(A, HL), ticks: 8 },
     Instruction { name: "DEC SP", itype: DEC2(SP), ticks: 8 },
@@ -333,13 +339,76 @@ const list_instruction: [Instruction; 199] = [
     Instruction { name: "CP A", itype: CP(A, A), ticks: 4 },
 
     // Thirteenth line
-    Instruction { name: "RET NZ", itype: NOP, ticks: 8 },
-    Instruction { name: "POP BC", itype: NOP, ticks: 12 },
-    Instruction { name: "JP NZ, nn", itype: NOP, ticks: 12 },
+    Instruction { name: "RET NZ", itype: NOT_IMPLEMENTED, ticks: 8 },
+    Instruction { name: "POP BC", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "JP NZ, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
     Instruction { name: "JP nn", itype: JUMP(JumpCondition::NONE), ticks: 16 },
-    Instruction { name: "CALL NZ, nn", itype: NOP, ticks: 12 },
-    Instruction { name: "PUSH BC", itype: NOP, ticks: 16 },
-    Instruction { name: "ADD A, n", itype: NOP, ticks: 8 },
+    Instruction { name: "CALL NZ, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "PUSH BC", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "ADD A, n", itype: ADD(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 00H", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "RET Z", itype: NOT_IMPLEMENTED, ticks: 8 },
+    Instruction { name: "RET", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "JP Z, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "PREFIX CB", itype: PREFIX_CB, ticks: 4 },
+    Instruction { name: "CALL Z, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "CALL nn", itype: CALL(JumpCondition::NONE), ticks: 24 },
+    Instruction { name: "ADC A, n", itype: ADC(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 08H", itype: NOT_IMPLEMENTED, ticks: 16 },
+
+    // Fourteenth line
+    Instruction { name: "RET NC", itype: NOT_IMPLEMENTED, ticks: 8 },
+    Instruction { name: "POP DE", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "JP NC, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 4 },
+    Instruction { name: "CALL NC, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "PUSH DE", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "SUB n", itype: SUB(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 10H", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "RET C", itype: NOT_IMPLEMENTED, ticks: 8 },
+    Instruction { name: "RETI", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "JP C, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 4 },
+    Instruction { name: "CALL C, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "SBC A, n", itype: SBC(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 18H", itype: NOT_IMPLEMENTED, ticks: 16 },
+
+    // Fifteenth line
+    Instruction { name: "LDH (n), A", itype: LDH(INSTANT, A), ticks: 12 },
+    Instruction { name: "POP HL", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "LD (C), A", itype: LDH(C, A), ticks: 8 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "PUSH HL", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "AND n", itype: AND(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 20H", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "ADD SP, n", itype: ADD22(SP, INSTANT2), ticks: 16 },
+    Instruction { name: "JP HL", itype: JUMP(JumpCondition::NONE), ticks: 4 },
+    Instruction { name: "LD (nn), A", itype: LOAD21(INSTANT2, A), ticks: 16 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "XOR n", itype: XOR(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 28H", itype: NOT_IMPLEMENTED, ticks: 16 },
+
+    // Sixteenth line
+    Instruction { name: "LDH A, (n)", itype: LDH(A, INSTANT), ticks: 12 },
+    Instruction { name: "POP AF", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "LD A, (C)", itype: LOAD11(A, C), ticks: 8 },
+    Instruction { name: "DI", itype: DI, ticks: 4 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "PUSH AF", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "OR n", itype: OR(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 30H", itype: NOT_IMPLEMENTED, ticks: 16 },
+    Instruction { name: "LD HL, SP+n", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "LD SP, HL", itype: LOAD22(SP, HL), ticks: 8 },
+    Instruction { name: "LD A, (nn)", itype: LOAD12(A, INSTANT2), ticks: 16 },
+    Instruction { name: "EI", itype: EI, ticks: 4 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
+    Instruction { name: "CP n", itype: CP(A, INSTANT), ticks: 8 },
+    Instruction { name: "RST 38H", itype: RST(0x38) , ticks: 16 },
 
 ];
 

@@ -4,7 +4,7 @@ use crate::instruction::{Instruction, InstructionType, JumpCondition, RegisterTa
 pub struct CPU {
     registers: Registers,
     bus: Vec<u8>,
-    tick: u8,
+    tick: u64,
 
     debug: bool,
 }
@@ -62,13 +62,15 @@ impl CPU {
     pub fn step(&mut self) {
 
         let opcode = self.fetch_byte();
-        
+
         let instruction = Instruction::from(opcode);
+        self.log(&format!("PC: {:#06x} {}:\t{:#04x}", self.registers.pc-1, instruction.name , opcode));
+
+
         self.execute_instruction(instruction);
         
 
-        self.log(&format!("PC: {:#06x} {}:\t{:#04x}", self.registers.pc, instruction.name , opcode));
-        //self.tick += instruction.ticks;
+        self.tick += instruction.ticks as u64;
 
         //self.log(&format!("PC: {:#06x} OP: {:#04x} {:#04x}", self.registers.pc, opcode, operand_value));
         //self.execute(opcode);
@@ -165,6 +167,18 @@ impl CPU {
                 self.set_value(target, result);
             },
 
+            // OR
+            InstructionType::OR(target, value) => {
+                let value = self.get_value(value);
+                let register = self.get_value(target);
+                let result = register | value;
+                self.set_value(target, result);
+                self.registers.set_flag(Flag::Zero, result == 0);
+                self.registers.set_flag(Flag::Sub, false);
+                self.registers.set_flag(Flag::HalfCarry, false);
+                self.registers.set_flag(Flag::Carry, false);
+            },
+
             // XOR
             InstructionType::XOR(target, value) => {
                 let value = self.get_value(value);
@@ -188,6 +202,47 @@ impl CPU {
                     _ => panic!("Invalid condition for JUMP"),
                 };
                 self.jump(should_jump);
+            },
+
+            InstructionType::RST(value) => {
+                self.write_short_to_stack(self.registers.pc);
+                self.registers.pc = value;
+            },
+
+            // LDH
+            InstructionType::LDH(target, value) => {
+                let value = self.get_value(value);
+                let address = 0xff00 + value as u16;
+                let result = self.get_value(target);
+                self.write_byte(address, result);
+            },
+
+            // CALL
+            InstructionType::CALL(condition) => {
+                match condition {
+                    JumpCondition::NONE => {
+                        let address = self.fetch_word();
+                        self.write_short_to_stack(self.registers.pc);
+                        self.registers.pc = address;
+                    },
+                    _ => panic!("Invalid condition for CALL"),
+                }
+            },
+
+            // JR
+            InstructionType::JR(condition) => {
+                let should_jump = match condition {
+                    JumpCondition::NONE => true,
+                    JumpCondition::NZ => !self.registers.get_flag(Flag::Zero),
+                    _ => panic!("Invalid condition for JR"),
+                };
+                self.jump(should_jump);
+            },
+
+            InstructionType::PREFIX_CB => {
+                let opcode = self.fetch_byte();
+                let instruction = Instruction::from_cb(opcode);
+                self.execute_instruction_cb(instruction);
             },
 
             _ => panic!("Unimplemented instruction: {:?}", instruction),
@@ -323,9 +378,11 @@ impl CPU {
     }
 
     fn jump(&mut self, should_jump: bool) {
-        let offset = self.fetch_byte() as i8;
+        let offset = self.fetch_word() as u16;
+        self.log(&format!("Jumping to {:#04x}", offset));
         if should_jump {
-            self.registers.pc = (self.registers.pc as i32 + offset as i32) as u16;
+            //self.registers.pc = (self.registers.pc as i32 + offset as i32) as u16;
+            self.registers.pc = offset;
         } else {
             self.registers.pc += 1;
         }
@@ -334,6 +391,8 @@ impl CPU {
     fn write_short_to_stack(&mut self, value: u16) {
         self.registers.sp -= 2;
         self.write_word(self.registers.sp, value);
+
+        self.log(&format!("SP: {:#06x} Writing {:#06x} to stack", self.registers.sp, value));
     }
 
 }

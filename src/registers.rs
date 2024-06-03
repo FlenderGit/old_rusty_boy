@@ -81,8 +81,7 @@ impl Registers {
     }
 
     pub fn get_flag(&self, flag: Flag) -> bool {
-        //self.f & flag
-        panic!("Not implemented")
+        self.f & (flag as u8) != 0
     }
 
 }
