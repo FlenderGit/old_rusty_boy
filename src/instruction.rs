@@ -1,4 +1,4 @@
-
+use crate::registers::Flag;
 
 #[derive(Copy, Debug, Clone)]
 pub struct Instruction {    
@@ -17,6 +17,14 @@ impl Instruction {
         LIST_INSTRUCTION[opcode as usize]
     }
 
+    pub fn from_cb(opcode: u8) -> Instruction {
+        // Security check
+        if opcode as usize > 0xff {
+            panic!("Unknown opcode: {:02X}", opcode);
+        }
+        LIST_INSTRUCTION_CB[opcode as usize]
+    }
+
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -30,6 +38,12 @@ pub enum RegisterTarget {
     L,
     _HL,
     INSTANT,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum LhdAction {
+    SAVE,
+    LOAD,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -66,29 +80,31 @@ pub enum InstructionType {
     JR(JumpCondition),
     JUMP(JumpCondition),
     CALL(JumpCondition),
+    RET(Flag),
     RST(u16),
 
     // 8bit load/store/move instructions
     LOAD11(RegisterTarget, RegisterTarget),
     LOAD12(RegisterTarget, RegisterTarget16),
     LOAD21(RegisterTarget16, RegisterTarget),
-    LDH(RegisterTarget, RegisterTarget),
+    LDH(LhdAction),
 
 
     // 16bit load/store/move instructions
     LOAD22(RegisterTarget16, RegisterTarget16),
+    POP(RegisterTarget16),
 
     // 8bit arithmetic/logical instructions
     INC(RegisterTarget),
     DEC(RegisterTarget),
     ADD(RegisterTarget, RegisterTarget),
     ADC(RegisterTarget, RegisterTarget),
-    SUB(RegisterTarget, RegisterTarget),
+    SUB(RegisterTarget),
     SBC(RegisterTarget, RegisterTarget),
     AND(RegisterTarget, RegisterTarget),
     XOR(RegisterTarget, RegisterTarget),
     OR(RegisterTarget, RegisterTarget),
-    CP(RegisterTarget, RegisterTarget),
+    CP(RegisterTarget),
     DDA,
     CPL,
     SCF,
@@ -104,6 +120,19 @@ pub enum InstructionType {
     RLCA,
     RRCA,
     RRA,
+
+    // prefixed
+    RLC(RegisterTarget),
+    RRC(RegisterTarget),
+    RL(RegisterTarget),
+    RR(RegisterTarget),
+    SLA(RegisterTarget),
+    SRA(RegisterTarget),
+    SWAP(RegisterTarget),
+    SRL(RegisterTarget),
+    BIT(u8, RegisterTarget),
+    RES(u8, RegisterTarget),
+    SET(u8, RegisterTarget),
     
 
 
@@ -119,6 +148,7 @@ pub enum InstructionType {
 use InstructionType::*;
 use RegisterTarget::*;
 use RegisterTarget16::*;
+use LhdAction::*;
 
 const LIST_INSTRUCTION: [Instruction; 256] = [
 
@@ -285,14 +315,14 @@ const LIST_INSTRUCTION: [Instruction; 256] = [
     Instruction { name: "ADC A, A", itype: ADC(A, A), ticks: 4 },
 
     // Tenth line
-    Instruction { name: "SUB B", itype: SUB(A, B), ticks: 4 },
-    Instruction { name: "SUB C", itype: SUB(A, C), ticks: 4 },
-    Instruction { name: "SUB D", itype: SUB(A, D), ticks: 4 },
-    Instruction { name: "SUB E", itype: SUB(A, E), ticks: 4 },
-    Instruction { name: "SUB H", itype: SUB(A, H), ticks: 4 },
-    Instruction { name: "SUB L", itype: SUB(A, L), ticks: 4 },
-    Instruction { name: "SUB (HL)", itype: SUB(A, _HL), ticks: 8 },
-    Instruction { name: "SUB A", itype: SUB(A, A), ticks: 4 },
+    Instruction { name: "SUB B", itype: SUB(B), ticks: 4 },
+    Instruction { name: "SUB C", itype: SUB(C), ticks: 4 },
+    Instruction { name: "SUB D", itype: SUB(D), ticks: 4 },
+    Instruction { name: "SUB E", itype: SUB(E), ticks: 4 },
+    Instruction { name: "SUB H", itype: SUB(H), ticks: 4 },
+    Instruction { name: "SUB L", itype: SUB(L), ticks: 4 },
+    Instruction { name: "SUB (HL)", itype: SUB(_HL), ticks: 8 },
+    Instruction { name: "SUB A", itype: SUB(A), ticks: 4 },
     Instruction { name: "SBC A, B", itype: SBC(A, B), ticks: 4 },
     Instruction { name: "SBC A, C", itype: SBC(A, C), ticks: 4 },
     Instruction { name: "SBC A, D", itype: SBC(A, D), ticks: 4 },
@@ -329,27 +359,27 @@ const LIST_INSTRUCTION: [Instruction; 256] = [
     Instruction { name: "OR L", itype: OR(A, L), ticks: 4 },
     Instruction { name: "OR (HL)", itype: OR(A, _HL), ticks: 8 },
     Instruction { name: "OR A", itype: OR(A, A), ticks: 4 },
-    Instruction { name: "CP B", itype: CP(A, B), ticks: 4 },
-    Instruction { name: "CP C", itype: CP(A, C), ticks: 4 },
-    Instruction { name: "CP D", itype: CP(A, D), ticks: 4 },
-    Instruction { name: "CP E", itype: CP(A, E), ticks: 4 },
-    Instruction { name: "CP H", itype: CP(A, H), ticks: 4 },
-    Instruction { name: "CP L", itype: CP(A, L), ticks: 4 },
-    Instruction { name: "CP (HL)", itype: CP(A, _HL), ticks: 8 },
-    Instruction { name: "CP A", itype: CP(A, A), ticks: 4 },
+    Instruction { name: "CP B", itype: CP(B), ticks: 4 },
+    Instruction { name: "CP C", itype: CP(C), ticks: 4 },
+    Instruction { name: "CP D", itype: CP(D), ticks: 4 },
+    Instruction { name: "CP E", itype: CP(E), ticks: 4 },
+    Instruction { name: "CP H", itype: CP(H), ticks: 4 },
+    Instruction { name: "CP L", itype: CP(L), ticks: 4 },
+    Instruction { name: "CP (HL)", itype: CP(_HL), ticks: 8 },
+    Instruction { name: "CP A", itype: CP(A), ticks: 4 },
 
     // Thirteenth line
     Instruction { name: "RET NZ", itype: NOT_IMPLEMENTED, ticks: 8 },
-    Instruction { name: "POP BC", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "POP BC", itype: POP(BC), ticks: 12 },
     Instruction { name: "JP NZ, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
     Instruction { name: "JP nn", itype: JUMP(JumpCondition::NONE), ticks: 16 },
     Instruction { name: "CALL NZ, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
     Instruction { name: "PUSH BC", itype: NOT_IMPLEMENTED, ticks: 16 },
     Instruction { name: "ADD A, n", itype: ADD(A, INSTANT), ticks: 8 },
     Instruction { name: "RST 00H", itype: NOT_IMPLEMENTED, ticks: 16 },
-    Instruction { name: "RET Z", itype: NOT_IMPLEMENTED, ticks: 8 },
-    Instruction { name: "RET", itype: NOT_IMPLEMENTED, ticks: 16 },
-    Instruction { name: "JP Z, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
+    Instruction { name: "RET Z", itype: RET(Flag::Zero), ticks: 8 },
+    Instruction { name: "RET", itype: RET(Flag::None), ticks: 16 },
+    Instruction { name: "JP Z, nn", itype: JUMP(JumpCondition::Z) , ticks: 12 },
     Instruction { name: "PREFIX CB", itype: PREFIX_CB, ticks: 4 },
     Instruction { name: "CALL Z, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
     Instruction { name: "CALL nn", itype: CALL(JumpCondition::NONE), ticks: 24 },
@@ -363,7 +393,7 @@ const LIST_INSTRUCTION: [Instruction; 256] = [
     Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 4 },
     Instruction { name: "CALL NC, nn", itype: NOT_IMPLEMENTED, ticks: 12 },
     Instruction { name: "PUSH DE", itype: NOT_IMPLEMENTED, ticks: 16 },
-    Instruction { name: "SUB n", itype: SUB(A, INSTANT), ticks: 8 },
+    Instruction { name: "SUB n", itype: SUB(INSTANT), ticks: 8 },
     Instruction { name: "RST 10H", itype: NOT_IMPLEMENTED, ticks: 16 },
     Instruction { name: "RET C", itype: NOT_IMPLEMENTED, ticks: 8 },
     Instruction { name: "RETI", itype: NOT_IMPLEMENTED, ticks: 16 },
@@ -375,9 +405,9 @@ const LIST_INSTRUCTION: [Instruction; 256] = [
     Instruction { name: "RST 18H", itype: NOT_IMPLEMENTED, ticks: 16 },
 
     // Fifteenth line
-    Instruction { name: "LDH (n), A", itype: LDH(INSTANT, A), ticks: 12 },
+    Instruction { name: "LDH (n), A", itype: LDH(SAVE), ticks: 12 },
     Instruction { name: "POP HL", itype: NOT_IMPLEMENTED, ticks: 12 },
-    Instruction { name: "LD (C), A", itype: LDH(C, A), ticks: 8 },
+    Instruction { name: "LD (C), A", itype: NOT_IMPLEMENTED, ticks: 8 },
     Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
     Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
     Instruction { name: "PUSH HL", itype: NOT_IMPLEMENTED, ticks: 16 },
@@ -393,7 +423,7 @@ const LIST_INSTRUCTION: [Instruction; 256] = [
     Instruction { name: "RST 28H", itype: NOT_IMPLEMENTED, ticks: 16 },
 
     // Sixteenth line
-    Instruction { name: "LDH A, (n)", itype: LDH(A, INSTANT), ticks: 12 },
+    Instruction { name: "LDH A, (n)", itype: LDH(LOAD), ticks: 12 },
     Instruction { name: "POP AF", itype: NOT_IMPLEMENTED, ticks: 12 },
     Instruction { name: "LD A, (C)", itype: LOAD11(A, C), ticks: 8 },
     Instruction { name: "DI", itype: DI, ticks: 4 },
@@ -407,8 +437,299 @@ const LIST_INSTRUCTION: [Instruction; 256] = [
     Instruction { name: "EI", itype: EI, ticks: 4 },
     Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
     Instruction { name: "XX", itype: NOT_IMPLEMENTED, ticks: 0 },
-    Instruction { name: "CP n", itype: CP(A, INSTANT), ticks: 8 },
+    Instruction { name: "CP n", itype: CP(INSTANT), ticks: 8 },
     Instruction { name: "RST 38H", itype: RST(0x38) , ticks: 16 },
 
 ];
 
+
+const LIST_INSTRUCTION_CB: [Instruction; 256] = [
+
+    // First line
+    Instruction { name: "RLC B", itype: RLC(B), ticks: 8 },
+    Instruction { name: "RLC C", itype: RLC(C), ticks: 8 },
+    Instruction { name: "RLC D", itype: RLC(D), ticks: 8 },
+    Instruction { name: "RLC E", itype: RLC(E), ticks: 8 },
+    Instruction { name: "RLC H", itype: RLC(H), ticks: 8 },
+    Instruction { name: "RLC L", itype: RLC(L), ticks: 8 },
+    Instruction { name: "RLC (HL)", itype: RLC(_HL), ticks: 16 },
+    Instruction { name: "RLC A", itype: RLC(A), ticks: 8 },
+    Instruction { name: "RRC B", itype: RRC(B), ticks: 8 },
+    Instruction { name: "RRC C", itype: RRC(C), ticks: 8 },
+    Instruction { name: "RRC D", itype: RRC(D), ticks: 8 },
+    Instruction { name: "RRC E", itype: RRC(E), ticks: 8 },
+    Instruction { name: "RRC H", itype: RRC(H), ticks: 8 },
+    Instruction { name: "RRC L", itype: RRC(L), ticks: 8 },
+    Instruction { name: "RRC (HL)", itype: RRC(_HL), ticks: 16 },
+    Instruction { name: "RRC A", itype: RRC(A), ticks: 8 },
+
+    // Second line
+    Instruction { name: "RL B", itype: RL(B), ticks: 8 },
+    Instruction { name: "RL C", itype: RL(C), ticks: 8 },
+    Instruction { name: "RL D", itype: RL(D), ticks: 8 },
+    Instruction { name: "RL E", itype: RL(E), ticks: 8 },
+    Instruction { name: "RL H", itype: RL(H), ticks: 8 },
+    Instruction { name: "RL L", itype: RL(L), ticks: 8 },
+    Instruction { name: "RL (HL)", itype: RL(_HL), ticks: 16 },
+    Instruction { name: "RL A", itype: RL(A), ticks: 8 },
+    Instruction { name: "RR B", itype: RR(B), ticks: 8 },
+    Instruction { name: "RR C", itype: RR(C), ticks: 8 },
+    Instruction { name: "RR D", itype: RR(D), ticks: 8 },
+    Instruction { name: "RR E", itype: RR(E), ticks: 8 },
+    Instruction { name: "RR H", itype: RR(H), ticks: 8 },
+    Instruction { name: "RR L", itype: RR(L), ticks: 8 },
+    Instruction { name: "RR (HL)", itype: RR(_HL), ticks: 16 },
+    Instruction { name: "RR A", itype: RR(A), ticks: 8 },
+
+    // Third line
+    Instruction { name: "SLA B", itype: SLA(B), ticks: 8 },
+    Instruction { name: "SLA C", itype: SLA(C), ticks: 8 },
+    Instruction { name: "SLA D", itype: SLA(D), ticks: 8 },
+    Instruction { name: "SLA E", itype: SLA(E), ticks: 8 },
+    Instruction { name: "SLA H", itype: SLA(H), ticks: 8 },
+    Instruction { name: "SLA L", itype: SLA(L), ticks: 8 },
+    Instruction { name: "SLA (HL)", itype: SLA(_HL), ticks: 16 },
+    Instruction { name: "SLA A", itype: SLA(A), ticks: 8 },
+    Instruction { name: "SRA B", itype: SRA(B), ticks: 8 },
+    Instruction { name: "SRA C", itype: SRA(C), ticks: 8 },
+    Instruction { name: "SRA D", itype: SRA(D), ticks: 8 },
+    Instruction { name: "SRA E", itype: SRA(E), ticks: 8 },
+    Instruction { name: "SRA H", itype: SRA(H), ticks: 8 },
+    Instruction { name: "SRA L", itype: SRA(L), ticks: 8 },
+    Instruction { name: "SRA (HL)", itype: SRA(_HL), ticks: 16 },
+    Instruction { name: "SRA A", itype: SRA(A), ticks: 8 },
+
+    // Fourth line
+    Instruction { name: "SWAP B", itype: SWAP(B), ticks: 8 },
+    Instruction { name: "SWAP C", itype: SWAP(C), ticks: 8 },
+    Instruction { name: "SWAP D", itype: SWAP(D), ticks: 8 },
+    Instruction { name: "SWAP E", itype: SWAP(E), ticks: 8 },
+    Instruction { name: "SWAP H", itype: SWAP(H), ticks: 8 },
+    Instruction { name: "SWAP L", itype: SWAP(L), ticks: 8 },
+    Instruction { name: "SWAP (HL)", itype: SWAP(_HL), ticks: 16 },
+    Instruction { name: "SWAP A", itype: SWAP(A), ticks: 8 },
+    Instruction { name: "SRL B", itype: SRL(B), ticks: 8 },
+    Instruction { name: "SRL C", itype: SRL(C), ticks: 8 },
+    Instruction { name: "SRL D", itype: SRL(D), ticks: 8 },
+    Instruction { name: "SRL E", itype: SRL(E), ticks: 8 },
+    Instruction { name: "SRL H", itype: SRL(H), ticks: 8 },
+    Instruction { name: "SRL L", itype: SRL(L), ticks: 8 },
+    Instruction { name: "SRL (HL)", itype: SRL(_HL), ticks: 16 },
+    Instruction { name: "SRL A", itype: SRL(A), ticks: 8 },
+
+    // Fifth line
+    Instruction { name: "BIT 0, B", itype: BIT(0, B), ticks: 8 },
+    Instruction { name: "BIT 0, C", itype: BIT(0, C), ticks: 8 },
+    Instruction { name: "BIT 0, D", itype: BIT(0, D), ticks: 8 },
+    Instruction { name: "BIT 0, E", itype: BIT(0, E), ticks: 8 },
+    Instruction { name: "BIT 0, H", itype: BIT(0, H), ticks: 8 },
+    Instruction { name: "BIT 0, L", itype: BIT(0, L), ticks: 8 },
+    Instruction { name: "BIT 0, (HL)", itype: BIT(0, _HL), ticks: 16 },
+    Instruction { name: "BIT 0, A", itype: BIT(0, A), ticks: 8 },
+    Instruction { name: "BIT 1, B", itype: BIT(1, B), ticks: 8 },
+    Instruction { name: "BIT 1, C", itype: BIT(1, C), ticks: 8 },
+    Instruction { name: "BIT 1, D", itype: BIT(1, D), ticks: 8 },
+    Instruction { name: "BIT 1, E", itype: BIT(1, E), ticks: 8 },
+    Instruction { name: "BIT 1, H", itype: BIT(1, H), ticks: 8 },
+    Instruction { name: "BIT 1, L", itype: BIT(1, L), ticks: 8 },
+    Instruction { name: "BIT 1, (HL)", itype: BIT(1, _HL), ticks: 16 },
+    Instruction { name: "BIT 1, A", itype: BIT(1, A), ticks: 8 },
+
+    // Sixth line
+    Instruction { name: "BIT 2, B", itype: BIT(2, B), ticks: 8 },
+    Instruction { name: "BIT 2, C", itype: BIT(2, C), ticks: 8 },
+    Instruction { name: "BIT 2, D", itype: BIT(2, D), ticks: 8 },
+    Instruction { name: "BIT 2, E", itype: BIT(2, E), ticks: 8 },
+    Instruction { name: "BIT 2, H", itype: BIT(2, H), ticks: 8 },
+    Instruction { name: "BIT 2, L", itype: BIT(2, L), ticks: 8 },
+    Instruction { name: "BIT 2, (HL)", itype: BIT(2, _HL), ticks: 16 },
+    Instruction { name: "BIT 2, A", itype: BIT(2, A), ticks: 8 },
+    Instruction { name: "BIT 3, B", itype: BIT(3, B), ticks: 8 },
+    Instruction { name: "BIT 3, C", itype: BIT(3, C), ticks: 8 },
+    Instruction { name: "BIT 3, D", itype: BIT(3, D), ticks: 8 },
+    Instruction { name: "BIT 3, E", itype: BIT(3, E), ticks: 8 },
+    Instruction { name: "BIT 3, H", itype: BIT(3, H), ticks: 8 },
+    Instruction { name: "BIT 3, L", itype: BIT(3, L), ticks: 8 },
+    Instruction { name: "BIT 3, (HL)", itype: BIT(3, _HL), ticks: 16 },
+    Instruction { name: "BIT 3, A", itype: BIT(3, A), ticks: 8 },
+
+    // Seventh line
+    Instruction { name: "BIT 4, B", itype: BIT(4, B), ticks: 8 },
+    Instruction { name: "BIT 4, C", itype: BIT(4, C), ticks: 8 },
+    Instruction { name: "BIT 4, D", itype: BIT(4, D), ticks: 8 },
+    Instruction { name: "BIT 4, E", itype: BIT(4, E), ticks: 8 },
+    Instruction { name: "BIT 4, H", itype: BIT(4, H), ticks: 8 },
+    Instruction { name: "BIT 4, L", itype: BIT(4, L), ticks: 8 },
+    Instruction { name: "BIT 4, (HL)", itype: BIT(4, _HL), ticks: 16 },
+    Instruction { name: "BIT 4, A", itype: BIT(4, A), ticks: 8 },
+    Instruction { name: "BIT 5, B", itype: BIT(5, B), ticks: 8 },
+    Instruction { name: "BIT 5, C", itype: BIT(5, C), ticks: 8 },
+    Instruction { name: "BIT 5, D", itype: BIT(5, D), ticks: 8 },
+    Instruction { name: "BIT 5, E", itype: BIT(5, E), ticks: 8 },
+    Instruction { name: "BIT 5, H", itype: BIT(5, H), ticks: 8 },
+    Instruction { name: "BIT 5, L", itype: BIT(5, L), ticks: 8 },
+    Instruction { name: "BIT 5, (HL)", itype: BIT(5, _HL), ticks: 16 },
+    Instruction { name: "BIT 5, A", itype: BIT(5, A), ticks: 8 },
+
+    // Eighth line
+    Instruction { name: "BIT 6, B", itype: BIT(6, B), ticks: 8 },
+    Instruction { name: "BIT 6, C", itype: BIT(6, C), ticks: 8 },
+    Instruction { name: "BIT 6, D", itype: BIT(6, D), ticks: 8 },
+    Instruction { name: "BIT 6, E", itype: BIT(6, E), ticks: 8 },
+    Instruction { name: "BIT 6, H", itype: BIT(6, H), ticks: 8 },
+    Instruction { name: "BIT 6, L", itype: BIT(6, L), ticks: 8 },
+    Instruction { name: "BIT 6, (HL)", itype: BIT(6, _HL), ticks: 16 },
+    Instruction { name: "BIT 6, A", itype: BIT(6, A), ticks: 8 },
+    Instruction { name: "BIT 7, B", itype: BIT(7, B), ticks: 8 },
+    Instruction { name: "BIT 7, C", itype: BIT(7, C), ticks: 8 },
+    Instruction { name: "BIT 7, D", itype: BIT(7, D), ticks: 8 },
+    Instruction { name: "BIT 7, E", itype: BIT(7, E), ticks: 8 },
+    Instruction { name: "BIT 7, H", itype: BIT(7, H), ticks: 8 },
+    Instruction { name: "BIT 7, L", itype: BIT(7, L), ticks: 8 },
+    Instruction { name: "BIT 7, (HL)", itype: BIT(7, _HL), ticks: 16 },
+    Instruction { name: "BIT 7, A", itype: BIT(7, A), ticks: 8 },
+
+    // Ninth line
+    Instruction { name: "RES 0, B", itype: RES(0, B), ticks: 8 },
+    Instruction { name: "RES 0, C", itype: RES(0, C), ticks: 8 },
+    Instruction { name: "RES 0, D", itype: RES(0, D), ticks: 8 },
+    Instruction { name: "RES 0, E", itype: RES(0, E), ticks: 8 },
+    Instruction { name: "RES 0, H", itype: RES(0, H), ticks: 8 },
+    Instruction { name: "RES 0, L", itype: RES(0, L), ticks: 8 },
+    Instruction { name: "RES 0, (HL)", itype: RES(0, _HL), ticks: 16 },
+    Instruction { name: "RES 0, A", itype: RES(0, A), ticks: 8 },
+    Instruction { name: "RES 1, B", itype: RES(1, B), ticks: 8 },
+    Instruction { name: "RES 1, C", itype: RES(1, C), ticks: 8 },
+    Instruction { name: "RES 1, D", itype: RES(1, D), ticks: 8 },
+    Instruction { name: "RES 1, E", itype: RES(1, E), ticks: 8 },
+    Instruction { name: "RES 1, H", itype: RES(1, H), ticks: 8 },
+    Instruction { name: "RES 1, L", itype: RES(1, L), ticks: 8 },
+    Instruction { name: "RES 1, (HL)", itype: RES(1, _HL), ticks: 16 },
+    Instruction { name: "RES 1, A", itype: RES(1, A), ticks: 8 },
+    
+    // Tenth line
+    Instruction { name: "RES 2, B", itype: RES(2, B), ticks: 8 },
+    Instruction { name: "RES 2, C", itype: RES(2, C), ticks: 8 },
+    Instruction { name: "RES 2, D", itype: RES(2, D), ticks: 8 },
+    Instruction { name: "RES 2, E", itype: RES(2, E), ticks: 8 },
+    Instruction { name: "RES 2, H", itype: RES(2, H), ticks: 8 },
+    Instruction { name: "RES 2, L", itype: RES(2, L), ticks: 8 },
+    Instruction { name: "RES 2, (HL)", itype: RES(2, _HL), ticks: 16 },
+    Instruction { name: "RES 2, A", itype: RES(2, A), ticks: 8 },
+    Instruction { name: "RES 3, B", itype: RES(3, B), ticks: 8 },
+    Instruction { name: "RES 3, C", itype: RES(3, C), ticks: 8 },
+    Instruction { name: "RES 3, D", itype: RES(3, D), ticks: 8 },
+    Instruction { name: "RES 3, E", itype: RES(3, E), ticks: 8 },
+    Instruction { name: "RES 3, H", itype: RES(3, H), ticks: 8 },
+    Instruction { name: "RES 3, L", itype: RES(3, L), ticks: 8 },
+    Instruction { name: "RES 3, (HL)", itype: RES(3, _HL), ticks: 16 },
+    Instruction { name: "RES 3, A", itype: RES(3, A), ticks: 8 },
+
+    // Eleventh line
+    Instruction { name: "RES 4, B", itype: RES(4, B), ticks: 8 },
+    Instruction { name: "RES 4, C", itype: RES(4, C), ticks: 8 },
+    Instruction { name: "RES 4, D", itype: RES(4, D), ticks: 8 },
+    Instruction { name: "RES 4, E", itype: RES(4, E), ticks: 8 },
+    Instruction { name: "RES 4, H", itype: RES(4, H), ticks: 8 },
+    Instruction { name: "RES 4, L", itype: RES(4, L), ticks: 8 },
+    Instruction { name: "RES 4, (HL)", itype: RES(4, _HL), ticks: 16 },
+    Instruction { name: "RES 4, A", itype: RES(4, A), ticks: 8 },
+    Instruction { name: "RES 5, B", itype: RES(5, B), ticks: 8 },
+    Instruction { name: "RES 5, C", itype: RES(5, C), ticks: 8 },
+    Instruction { name: "RES 5, D", itype: RES(5, D), ticks: 8 },
+    Instruction { name: "RES 5, E", itype: RES(5, E), ticks: 8 },
+    Instruction { name: "RES 5, H", itype: RES(5, H), ticks: 8 },
+    Instruction { name: "RES 5, L", itype: RES(5, L), ticks: 8 },
+    Instruction { name: "RES 5, (HL)", itype: RES(5, _HL), ticks: 16 },
+    Instruction { name: "RES 5, A", itype: RES(5, A), ticks: 8 },
+
+    // Twelfth line
+    Instruction { name: "RES 6, B", itype: RES(6, B), ticks: 8 },
+    Instruction { name: "RES 6, C", itype: RES(6, C), ticks: 8 },
+    Instruction { name: "RES 6, D", itype: RES(6, D), ticks: 8 },
+    Instruction { name: "RES 6, E", itype: RES(6, E), ticks: 8 },
+    Instruction { name: "RES 6, H", itype: RES(6, H), ticks: 8 },
+    Instruction { name: "RES 6, L", itype: RES(6, L), ticks: 8 },
+    Instruction { name: "RES 6, (HL)", itype: RES(6, _HL), ticks: 16 },
+    Instruction { name: "RES 6, A", itype: RES(6, A), ticks: 8 },
+    Instruction { name: "RES 7, B", itype: RES(7, B), ticks: 8 },
+    Instruction { name: "RES 7, C", itype: RES(7, C), ticks: 8 },
+    Instruction { name: "RES 7, D", itype: RES(7, D), ticks: 8 },
+    Instruction { name: "RES 7, E", itype: RES(7, E), ticks: 8 },
+    Instruction { name: "RES 7, H", itype: RES(7, H), ticks: 8 },
+    Instruction { name: "RES 7, L", itype: RES(7, L), ticks: 8 },
+    Instruction { name: "RES 7, (HL)", itype: RES(7, _HL), ticks: 16 },
+    Instruction { name: "RES 7, A", itype: RES(7, A), ticks: 8 },
+
+    // Thirteenth line
+    Instruction { name: "SET 0, B", itype: SET(0, B), ticks: 8 },
+    Instruction { name: "SET 0, C", itype: SET(0, C), ticks: 8 },
+    Instruction { name: "SET 0, D", itype: SET(0, D), ticks: 8 },
+    Instruction { name: "SET 0, E", itype: SET(0, E), ticks: 8 },
+    Instruction { name: "SET 0, H", itype: SET(0, H), ticks: 8 },
+    Instruction { name: "SET 0, L", itype: SET(0, L), ticks: 8 },
+    Instruction { name: "SET 0, (HL)", itype: SET(0, _HL), ticks: 16 },
+    Instruction { name: "SET 0, A", itype: SET(0, A), ticks: 8 },
+    Instruction { name: "SET 1, B", itype: SET(1, B), ticks: 8 },
+    Instruction { name: "SET 1, C", itype: SET(1, C), ticks: 8 },
+    Instruction { name: "SET 1, D", itype: SET(1, D), ticks: 8 },
+    Instruction { name: "SET 1, E", itype: SET(1, E), ticks: 8 },
+    Instruction { name: "SET 1, H", itype: SET(1, H), ticks: 8 },
+    Instruction { name: "SET 1, L", itype: SET(1, L), ticks: 8 },
+    Instruction { name: "SET 1, (HL)", itype: SET(1, _HL), ticks: 16 },
+    Instruction { name: "SET 1, A", itype: SET(1, A), ticks: 8 },
+
+    // Fourteenth line
+    Instruction { name: "SET 2, B", itype: SET(2, B), ticks: 8 },
+    Instruction { name: "SET 2, C", itype: SET(2, C), ticks: 8 },
+    Instruction { name: "SET 2, D", itype: SET(2, D), ticks: 8 },
+    Instruction { name: "SET 2, E", itype: SET(2, E), ticks: 8 },
+    Instruction { name: "SET 2, H", itype: SET(2, H), ticks: 8 },
+    Instruction { name: "SET 2, L", itype: SET(2, L), ticks: 8 },
+    Instruction { name: "SET 2, (HL)", itype: SET(2, _HL), ticks: 16 },
+    Instruction { name: "SET 2, A", itype: SET(2, A), ticks: 8 },
+    Instruction { name: "SET 3, B", itype: SET(3, B), ticks: 8 },
+    Instruction { name: "SET 3, C", itype: SET(3, C), ticks: 8 },
+    Instruction { name: "SET 3, D", itype: SET(3, D), ticks: 8 },
+    Instruction { name: "SET 3, E", itype: SET(3, E), ticks: 8 },
+    Instruction { name: "SET 3, H", itype: SET(3, H), ticks: 8 },
+    Instruction { name: "SET 3, L", itype: SET(3, L), ticks: 8 },
+    Instruction { name: "SET 3, (HL)", itype: SET(3, _HL), ticks: 16 },
+    Instruction { name: "SET 3, A", itype: SET(3, A), ticks: 8 },
+
+    // Fifteenth line
+    Instruction { name: "SET 4, B", itype: SET(4, B), ticks: 8 },
+    Instruction { name: "SET 4, C", itype: SET(4, C), ticks: 8 },
+    Instruction { name: "SET 4, D", itype: SET(4, D), ticks: 8 },
+    Instruction { name: "SET 4, E", itype: SET(4, E), ticks: 8 },
+    Instruction { name: "SET 4, H", itype: SET(4, H), ticks: 8 },
+    Instruction { name: "SET 4, L", itype: SET(4, L), ticks: 8 },
+    Instruction { name: "SET 4, (HL)", itype: SET(4, _HL), ticks: 16 },
+    Instruction { name: "SET 4, A", itype: SET(4, A), ticks: 8 },
+    Instruction { name: "SET 5, B", itype: SET(5, B), ticks: 8 },
+    Instruction { name: "SET 5, C", itype: SET(5, C), ticks: 8 },
+    Instruction { name: "SET 5, D", itype: SET(5, D), ticks: 8 },
+    Instruction { name: "SET 5, E", itype: SET(5, E), ticks: 8 },
+    Instruction { name: "SET 5, H", itype: SET(5, H), ticks: 8 },
+    Instruction { name: "SET 5, L", itype: SET(5, L), ticks: 8 },
+    Instruction { name: "SET 5, (HL)", itype: SET(5, _HL), ticks: 16 },
+    Instruction { name: "SET 5, A", itype: SET(5, A), ticks: 8 },
+
+    // Sixteenth line
+    Instruction { name: "SET 6, B", itype: SET(6, B), ticks: 8 },
+    Instruction { name: "SET 6, C", itype: SET(6, C), ticks: 8 },
+    Instruction { name: "SET 6, D", itype: SET(6, D), ticks: 8 },
+    Instruction { name: "SET 6, E", itype: SET(6, E), ticks: 8 },
+    Instruction { name: "SET 6, H", itype: SET(6, H), ticks: 8 },
+    Instruction { name: "SET 6, L", itype: SET(6, L), ticks: 8 },
+    Instruction { name: "SET 6, (HL)", itype: SET(6, _HL), ticks: 16 },
+    Instruction { name: "SET 6, A", itype: SET(6, A), ticks: 8 },
+    Instruction { name: "SET 7, B", itype: SET(7, B), ticks: 8 },
+    Instruction { name: "SET 7, C", itype: SET(7, C), ticks: 8 },
+    Instruction { name: "SET 7, D", itype: SET(7, D), ticks: 8 },
+    Instruction { name: "SET 7, E", itype: SET(7, E), ticks: 8 },
+    Instruction { name: "SET 7, H", itype: SET(7, H), ticks: 8 },
+    Instruction { name: "SET 7, L", itype: SET(7, L), ticks: 8 },
+    Instruction { name: "SET 7, (HL)", itype: SET(7, _HL), ticks: 16 },
+    Instruction { name: "SET 7, A", itype: SET(7, A), ticks: 8 },
+];

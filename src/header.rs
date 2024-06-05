@@ -65,6 +65,10 @@ impl Header {
         return header;
     }
 
+    pub fn get_title(&self) -> String {
+        String::from_utf8_lossy(&self.title).trim_end_matches(char::from(0)).to_string()
+    }
+
     pub fn is_valid(&self, rom: &[u8]) -> bool {
         let mut sum = 0u8;
         for i in 0x134..0x14d {
@@ -86,7 +90,7 @@ impl Header {
 
     pub fn to_string(&self) -> String {
         format!("Title: {}\nCartridge Type: {}\nROM Size: {}\nRAM Size: {}\n",
-            String::from_utf8_lossy(&self.title).trim_end_matches(char::from(0)),
+            self.get_title(),
             self.cartridge_type,
             self.rom_size,
             self.ram_size,

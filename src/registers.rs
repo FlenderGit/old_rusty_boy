@@ -1,12 +1,15 @@
 
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Flag {
     Zero = 1 << 7,
     Sub = 1 << 6,
     HalfCarry = 1 << 5,
     Carry = 1 << 4,
+    None = 0,
 }
 
 
+#[derive(Debug)]
 pub struct Registers {
     pub a: u8,
     pub b: u8,
@@ -16,8 +19,8 @@ pub struct Registers {
     pub h: u8,
     pub l: u8,
     pub f: u8,
-    pub sp: u16,
-    pub pc: u16,
+    //pub sp: u16,
+    //pub pc: u16,
 }
 
 impl Registers {
@@ -32,8 +35,6 @@ impl Registers {
             e: 0xd8,
             h: 0x01,
             l: 0x4d,
-            sp: 0xfffe,
-            pc: 0x0100,
         }
     }
 

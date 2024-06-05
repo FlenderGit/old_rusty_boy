@@ -1,10 +1,15 @@
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::header::Header;
-use crate::cpu::CPU;
+use crate::memory::Memory;
+use crate::cpu_new::CPU;
 
 pub struct Game {
     pub header: Header,
-    pub cpu: CPU,
+    //memory: Memory,
+    cpu: CPU,
 }
 
 impl Game {
@@ -19,19 +24,26 @@ impl Game {
             }
         };
 
+        let memory = Memory::new();
+        let memory_ref = Rc::new(RefCell::new(memory));
+        
+        memory_ref.borrow_mut().load_rom(&rom);
+
         Game {
             header: Header::new(&rom),
-            cpu: CPU::new(rom),
+            //memory,
+            cpu: CPU::new(memory_ref),
         }
     }
 
     pub fn run(&mut self) {
-        // println!("Running game: {}", self.header.title.to_string());
-
-        for _ in 0..20 {
+        println!("Running game: {}", self.header.get_title());
+        
+        for _ in 0..100_000 {
             self.cpu.step();
         }
 
+        println!("Registers: {:?}", self.cpu.registers);
 
     }
 }

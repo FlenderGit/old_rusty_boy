@@ -1,11 +1,10 @@
 use crate::registers::{Registers, Flag};
-use crate::instruction::{Instruction, InstructionType, JumpCondition, RegisterTarget, RegisterTarget16};
+use crate::instruction::{Instruction, InstructionType, JumpCondition, RegisterTarget, RegisterTarget16, LhdAction};
 
 pub struct CPU {
-    registers: Registers,
+    pub registers: Registers,
     bus: Vec<u8>,
     tick: u64,
-
     debug: bool,
 }
 
@@ -64,8 +63,7 @@ impl CPU {
         let opcode = self.fetch_byte();
 
         let instruction = Instruction::from(opcode);
-        self.log(&format!("PC: {:#06x} {}:\t{:#04x}", self.registers.pc-1, instruction.name , opcode));
-
+        self.log(&format!("I: {:#06x} {:#04x} -> {}", self.registers.pc-1, opcode, instruction.name ));
 
         self.execute_instruction(instruction);
         
@@ -123,6 +121,7 @@ impl CPU {
             RegisterTarget16::DE => self.registers.set_de(value),
             RegisterTarget16::HL => self.registers.set_hl(value),
             RegisterTarget16::SP => self.registers.sp = value,
+            RegisterTarget16::INSTANT2 => { self.fetch_word(); },
             _ => panic!("Invalid target for set_value_16"),
         }
     }
@@ -167,6 +166,18 @@ impl CPU {
                 self.set_value(target, result);
             },
 
+            // SUB
+            InstructionType::SUB(target) => {
+                let value = self.get_value(target);
+                let register = self.registers.a;
+                let result = register.wrapping_sub(value);
+                self.registers.a = result;
+                self.registers.set_flag(Flag::Zero, result == 0);
+                self.registers.set_flag(Flag::Sub, true);
+                self.registers.set_flag(Flag::HalfCarry, (register & 0x0f) < (value & 0x0f));
+                self.registers.set_flag(Flag::Carry, register < value);
+            },
+
             // OR
             InstructionType::OR(target, value) => {
                 let value = self.get_value(value);
@@ -191,17 +202,60 @@ impl CPU {
                 self.registers.set_flag(Flag::Carry, false);
             },
 
+            // AND
+            InstructionType::AND(target, value) => {
+                let value = self.get_value(value);
+                let register = self.get_value(target);
+                let result = register & value;
+                self.set_value(target, result);
+                self.registers.set_flag(Flag::Zero, result == 0);
+                self.registers.set_flag(Flag::Sub, false);
+                self.registers.set_flag(Flag::HalfCarry, true);
+                self.registers.set_flag(Flag::Carry, false);
+            },
+
+            // INC2
+            InstructionType::INC2(target) => {
+                let value = self.get_value_16(target);
+                let result = value.wrapping_add(1);
+                self.set_value_16(target, result);
+            },
+
+            // DEC2
+            InstructionType::DEC2(target) => {
+                let value = self.get_value_16(target);
+                let result = value.wrapping_sub(1);
+                self.set_value_16(target, result);
+            },
+
+            // RET
+            InstructionType::RET(flag) => {
+                if flag == Flag::None || self.registers.get_flag(flag) {
+                    self.registers.pc = self.fetch_word();
+                    self.tick += 20;
+                } else {
+                    self.tick += 8;
+                }
+            },
+
+            // POP
+            InstructionType::POP(target) => {
+                let value = self.read_word(self.registers.sp);
+                self.set_value_16(target, value);
+            },
+
             // JUMP
             InstructionType::JUMP(condition) => {
                 let should_jump = match condition {
                     JumpCondition::NONE => true,
-                    //Flag::Zero => self.registers.get_flag(Flag::Zero),
+                    JumpCondition::NZ => !self.registers.get_flag(Flag::Zero),
+                    JumpCondition::Z => self.registers.get_flag(Flag::Zero),
                     //Flag::Carry => self.registers.get_flag(Flag::Carry),
                     //Flag::HalfCarry => !self.registers.get_flag(Flag::HalfCarry),
                     //Flag::Sub => !self.registers.get_flag(Flag::Sub),
                     _ => panic!("Invalid condition for JUMP"),
                 };
-                self.jump(should_jump);
+                self.jump_2(should_jump, false);
             },
 
             InstructionType::RST(value) => {
@@ -209,12 +263,27 @@ impl CPU {
                 self.registers.pc = value;
             },
 
-            // LDH
-            InstructionType::LDH(target, value) => {
+            InstructionType::ADC(target, value) => {
                 let value = self.get_value(value);
+                let register = self.get_value(target);
+                let carry = self.registers.get_flag(Flag::Carry);
+                let result = self.add(register, value + carry as u8);
+                self.set_value(target, result);
+            },
+
+            // LDH
+            InstructionType::LDH(instruction) => {
+                let value = self.fetch_byte();
                 let address = 0xff00 + value as u16;
-                let result = self.get_value(target);
-                self.write_byte(address, result);
+                match instruction {
+                    LhdAction::LOAD => {
+                        self.registers.a = self.read_byte(address);
+                    },
+                    LhdAction::SAVE => {
+                        self.write_byte(address, self.registers.a);
+                    },
+                };
+                //self.log(&format!("LDH {:?}: {:#06x} {:#06x}", instruction, address, self.read_byte(address)));
             },
 
             // CALL
@@ -229,21 +298,42 @@ impl CPU {
                 }
             },
 
+            // CP
+            InstructionType::CP(target) => {
+                let value = self.get_value(target);
+                let register = self.registers.a;
+                let result = register.wrapping_sub(value);
+                self.registers.set_flag(Flag::Zero, result == 0);
+                self.registers.set_flag(Flag::Sub, true);
+                self.registers.set_flag(Flag::HalfCarry, (register & 0x0f) < (value & 0x0f));
+                self.registers.set_flag(Flag::Carry, register < value);
+            },
+
             // JR
             InstructionType::JR(condition) => {
                 let should_jump = match condition {
                     JumpCondition::NONE => true,
                     JumpCondition::NZ => !self.registers.get_flag(Flag::Zero),
+                    JumpCondition::Z => self.registers.get_flag(Flag::Zero),
+                    JumpCondition::NC => !self.registers.get_flag(Flag::Carry),
+                    JumpCondition::C => self.registers.get_flag(Flag::Carry),
                     _ => panic!("Invalid condition for JR"),
                 };
-                self.jump(should_jump);
+                self.jump(should_jump, true);
             },
 
             InstructionType::PREFIX_CB => {
                 let opcode = self.fetch_byte();
                 let instruction = Instruction::from_cb(opcode);
-                self.execute_instruction_cb(instruction);
+                self.log(&format!("PC: {:#06x} {}:\t{:#04x}", self.registers.pc-1, instruction.name , opcode));
+                self.execute_instruction(instruction);
             },
+
+            InstructionType::RES(value, target) => {
+                let register = self.get_value(target);
+                let result = register & !(1 << value);
+                self.set_value(target, result);
+            }
 
             _ => panic!("Unimplemented instruction: {:?}", instruction),
         }
@@ -377,21 +467,34 @@ impl CPU {
         result
     }
 
-    fn jump(&mut self, should_jump: bool) {
-        let offset = self.fetch_word() as u16;
-        self.log(&format!("Jumping to {:#04x}", offset));
+    fn jump(&mut self, should_jump: bool, relative: bool) {
+        let offset = self.fetch_byte();
         if should_jump {
-            //self.registers.pc = (self.registers.pc as i32 + offset as i32) as u16;
-            self.registers.pc = offset;
-        } else {
-            self.registers.pc += 1;
+            if relative {
+                //self.log(&format!("Offset {}", (offset as i8).abs() as u16));
+                self.registers.pc -= (offset as i8).abs() as u16 ;
+            } else {
+                self.registers.pc = offset as u16;
+            }
+            self.log(&format!("Jumping to {:#04x}", self.registers.pc));
+        }
+    }
+
+    fn jump_2(&mut self, should_jump: bool, relative: bool) {
+        let offset = self.fetch_word();
+        if should_jump {
+            if relative {
+                self.registers.pc += offset as i8 as u16;
+            } else {
+                self.registers.pc = offset;
+            }
+            self.log(&format!("Jumping to {:#04x}", self.registers.pc));
         }
     }
 
     fn write_short_to_stack(&mut self, value: u16) {
         self.registers.sp -= 2;
         self.write_word(self.registers.sp, value);
-
         self.log(&format!("SP: {:#06x} Writing {:#06x} to stack", self.registers.sp, value));
     }
 
