@@ -50,6 +50,10 @@ impl Registers {
         (self.h as u16) << 8 | self.l as u16
     }
 
+    pub fn af(&self) -> u16 {
+        (self.a as u16) << 8 | self.f as u16
+    }
+
     pub fn set_bc(&mut self, value: u16) {
         self.b = ((value & 0xff00) >> 8) as u8;
         self.c = (value & 0x00ff) as u8;

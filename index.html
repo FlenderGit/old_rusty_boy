@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Ubuntu', sans-serif;
+            background-color: #f0f0f0;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+    </style>
+    <link rel="stylesheet" href="gb.css">
+</head>
+<body>
+
+    <h1>Test view tilemap from GameBoy</h1>
+    <input type="file" id="file" name="file" accept=".bin">
+
+    <div class="gameboy">
+        <div class="plate">
+            <div class="screen-container">
+                <div class="screen">
+                    <canvas id="canvas" class="screen" width="160" height="144"></canvas>
+                </div>
+            </div>
+            <div class="logo"></div>
+            <div class="cross-container">
+                <div class="cross">
+                    <div class="line"></div>
+                    <div class="line"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+<script>
+    var canvas = document.getElementById("canvas");
+    var ctx = canvas.getContext("2d");
+    canvas.width = 160;
+    canvas.height = 144;
+
+    var fileInput = document.getElementById("file");
+
+    const imageData = ctx.createImageData(160, 144);
+
+
+
+
+
+    fileInput.addEventListener("change", function(e) {
+        var file = e.target.files[0];
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var data = new Uint8Array(e.target.result);
+            //console.log(data);
+            
+            // Save all tiles as 2D array
+            var tiles = [];
+            //for (var i = 0; i < 384; i++) {
+            for (var i = 0; i < 384; i++) {
+                var tile = [];
+                for (var j = 0; j < 16; j++) {
+                    tile.push(data[i * 16 + j]);
+                }
+                tiles.push(tile);
+            }
+            console.log(tiles);
+
+            const colors = [
+                255, 160, 80, 0
+            ]
+
+            // Draw tiles
+            tiles.forEach((tile, i) => {
+                console.log(i, tile)
+                for (var y = 0; y < 8; y++) {
+                    const bit_1 = tile[y*2];
+                    const bit_2 = tile[y*2+1];
+
+                    for (var x = 0; x < 8; x++) {
+                        const color = (bit_1 & (1 << (7-x)) ? 1 : 0) + (bit_2 & (1 << (7-x)) ? 2 : 0);
+                        const index = (y * 160 + x + i * 8 + Math.floor(i / 20) * 160 * 8) * 4;
+                        imageData.data[index] = colors[color];
+                        imageData.data[index + 1] = colors[color];
+                        imageData.data[index + 2] = colors[color];
+                        imageData.data[index + 3] = colors[color] === 255 ? 0 : 255;
+                    }
+                }
+            });
+
+
+            /*
+            tile.forEach((byte, j) => {
+                    let bits = byte.toString(2).padStart(8, "0");
+                    for (let k = 0; k < 8; k++) {
+                        let color = bits[k] === "1" ? 0 : 230;
+                        let index = (j * 160 + k + i * 8 + Math.floor(i / 20) * 160 * 8 * 2) * 4;
+                        imageData.data[index] = color;
+                        imageData.data[index + 1] = color;
+                        imageData.data[index + 2] = color;
+                        imageData.data[index + 3] = 255;
+                    }
+                });
+                */
+            
+
+            ctx.putImageData(imageData, 0, 0);
+
+            return;
+            
+        }
+
+        reader.readAsArrayBuffer(file);
+    });
+    
+    
+</script>
+
+</html>

@@ -1,6 +1,6 @@
 pub mod game;
-// pub mod cpu;
-pub mod cpu_new;
+pub mod cpu;
+pub mod gpu;
 pub mod registers;
 pub mod header;
 pub mod instruction;

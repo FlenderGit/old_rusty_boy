@@ -5,7 +5,7 @@ pub struct Memory {
     
     rom: [u8; 0x8000],
 
-    vram: [u8; 0x2000],
+    pub vram: [u8; 0x2000],
     sram: [u8; 0x2000],
     wram: [u8; 0x2000],
     oam: [u8; 0x00a0],
@@ -22,12 +22,12 @@ pub struct Memory {
 
 impl Memory {
 
-    pub fn load_rom(&mut self, data: &Vec<u8>) {
-        println!("Loading ROM into memory, length: {}", data.len());
-        
-        for (i, byte) in data.iter().enumerate() {
-            self.write_byte(i as u16, *byte);
+    pub fn load_rom(&mut self, data: &Vec<u8>) {        
+        // Clone 0x0000 -> 0x7fff
+        for i in 0..0x8000 {
+            self.rom[i] = data[i];
         }
+
         
     }
 
@@ -72,7 +72,7 @@ impl Memory {
 
     pub fn fetch_byte(&mut self) -> u8 {
         let byte = self.read_byte(self.pc);
-        self.pc += 1;
+        self.pc = self.pc.wrapping_add(1);
         byte
     }
 
@@ -85,12 +85,16 @@ impl Memory {
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x7fff => self.rom[address as usize] = value,
-            0x8000..=0x9fff => self.vram[(address - 0x8000) as usize] = value,
+            0x8000..=0x9fff => {
+                self.vram[(address - 0x8000) as usize] = value;
+            }
             0xa000..=0xbfff => self.sram[(address - 0xa000) as usize] = value,
             0xc000..=0xdfff => self.wram[(address - 0xc000) as usize] = value,
             0xe000..=0xfdff => self.wram[(address - 0xe000) as usize] = value,
             0xfe00..=0xfe9f => self.oam[(address - 0xfe00) as usize] = value,
-            0xfea0..=0xfeff => { println!("Invalid memory write at address: {:x}", address) },
+            0xfea0..=0xfeff => {
+                //println!("Invalid memory write at address: {:x}", address)
+            },
             0xff00..=0xff7f => self.io[(address - 0xff00) as usize] = value,
             0xff80..=0xfffe => self.hram[(address - 0xff80) as usize] = value,
             0xffff => self.interrupt_enable = value,
@@ -117,6 +121,23 @@ impl Memory {
 
         self.pc = 0x0100;
         self.sp = 0xfffe;
+    }
+
+    pub fn read_short_from_stack(&mut self) -> u16 {
+        let sp = self.sp;
+        let value = self.read_short(sp);
+        self.sp += 2;
+        value
+    }
+
+    pub fn write_short_to_stack(&mut self, value: u16) {
+        self.sp -= 2;
+        self.write_short(self.sp, value);
+    }
+
+    pub fn pop_stack(&mut self) -> u16 {
+        let value = self.read_short_from_stack();
+        value
     }
 
 }
