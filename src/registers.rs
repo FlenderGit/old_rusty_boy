@@ -19,8 +19,8 @@ pub struct Registers {
     pub h: u8,
     pub l: u8,
     pub f: u8,
-    //pub sp: u16,
-    //pub pc: u16,
+    pub sp: u16,
+    pub pc: u16,
 }
 
 impl Registers {
@@ -35,6 +35,8 @@ impl Registers {
             e: 0xd8,
             h: 0x01,
             l: 0x4d,
+            sp: 0xfffe,
+            pc: 0x0100,
         }
     }
 
@@ -54,6 +56,18 @@ impl Registers {
         (self.a as u16) << 8 | self.f as u16
     }
 
+    pub fn hli(&mut self) -> u16 {
+        let value = self.hl();
+        self.set_hl(value.wrapping_add(1));
+        value
+    }
+
+    pub fn hld(&mut self) -> u16 {
+        let value = self.hl();
+        self.set_hl(value.wrapping_sub(1));
+        value
+    }
+
     pub fn set_bc(&mut self, value: u16) {
         self.b = ((value & 0xff00) >> 8) as u8;
         self.c = (value & 0x00ff) as u8;
@@ -67,6 +81,11 @@ impl Registers {
     pub fn set_hl(&mut self, value: u16) {
         self.h = ((value & 0xff00) >> 8) as u8;
         self.l = (value & 0x00ff) as u8;
+    }
+
+    pub fn set_af(&mut self, value: u16) {
+        self.a = ((value & 0xff00) >> 8) as u8;
+        self.f = (value & 0x00ff) as u8;
     }
 
     pub fn up_flag(&mut self, flag: Flag) {

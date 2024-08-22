@@ -1,4 +1,4 @@
-mod gameboy;
+pub mod gameboy;
 mod cpu;
 mod gpu;
 mod registers;

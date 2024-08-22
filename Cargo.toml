@@ -2,3 +2,10 @@
 name = "gb-emulator"
 version = "0.1.0"
 edition = "2021"
+
+[profile.release]
+opt-level = 3
+
+[dependencies]
+env_logger = "0.11.5"
+log = "0.4.22"
