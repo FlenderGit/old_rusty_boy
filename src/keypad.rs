@@ -21,7 +21,7 @@ pub struct Keypad {
     data: u8,
     row0: u8,
     row1: u8,
-    pub interrupt: bool,
+    pub interrupt: u8,
 }
 
 impl Keypad {
@@ -31,7 +31,7 @@ impl Keypad {
             data: 0xFF,
             row0: 0x0F,
             row1: 0x0F,
-            interrupt: false,
+            interrupt: 0x00,
         }
     }
 
@@ -51,8 +51,8 @@ impl Keypad {
 
         new &= if self.row0 & ROW0_FLAG == 0 { self.row0 } else { 0x0F };
         new &= if self.row0 & ROW1_FLAG == 0 { self.row1 } else { 0x0F };
+        self.interrupt = if old & new != 0 { 0x10 } else { 0x00 };
 
-        self.interrupt = old != new;
         self.data = (self.data & 0xF0) | new;
     }
 

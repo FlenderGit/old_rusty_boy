@@ -4,3 +4,4 @@ mod gpu;
 mod registers;
 mod memory;
 mod keypad;
+mod header;

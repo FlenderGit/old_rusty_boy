@@ -17,6 +17,7 @@ enum Mode {
 pub struct GPU {
     mode: Mode,
     clock: u32,
+    pub interrupt: u8,
 
     vram: [u8; VRAM_SIZE],
     oam: [u8; OAM_SIZE],
@@ -43,6 +44,7 @@ impl GPU {
         GPU {
             mode: Mode::OAM,
             clock: 0,
+            interrupt: 0,
             vram: [0; VRAM_SIZE],
             oam: [0; OAM_SIZE],
             vram_bank: 0,
@@ -70,9 +72,11 @@ impl GPU {
                 if self.clock >= 204 {
                     self.clock -= 204;
                     self.ly += 1;
+                    self.check_interrupt_lyc();
     
                     if self.ly == SCREEN_HEIGHT as u8 {
                         self.mode = Mode::VBlank;
+                        self.interrupt = 0x01;
                         // Début de VBlank, appeler la routine d'interruption ici si nécessaire
                     } else {
                         self.mode = Mode::OAM;
@@ -186,7 +190,8 @@ impl GPU {
                 _ => 0,
             };
 
-            self.screen_data[(self.ly as usize * SCREEN_WIDTH + x) as usize] = color;
+            self.set_color(x, color);
+            //self.screen_data[(self.ly as usize * SCREEN_WIDTH + x) as usize] = color;
         }
     }
 
@@ -198,19 +203,25 @@ impl GPU {
 
     fn print_line(&self) {
         for x in 0..SCREEN_WIDTH {
-            print!("{}", match self.screen_data[self.ly as usize * SCREEN_WIDTH + x] {
-                0 => "  ",
-                1 => "..",
-                2 => "xx",
-                3 => "XX",
-                _ => "  ",
-            });
+            match self.screen_data[self.ly as usize * SCREEN_WIDTH * 3 + x * 3] {
+                3 => print!("  "),
+                2 => print!("░░"),
+                1 => print!("▒▒"),
+                0 => print!("▓▓"),
+                _ => print!(" "),
+            }
         }
         println!();
     }
 
     pub fn read_vram(&self, address: u16) -> u8 {
         self.vram[address as usize & 0x1FFF]
+    }
+
+    fn check_interrupt_lyc(&mut self) {
+        if self.ly == self.lyc {
+            self.stat |= 0x04;
+        }
     }
 
     pub fn read_oam(&self, address: u16) -> u8 {
@@ -252,7 +263,10 @@ impl GPU {
             0xff42 => self.scy = value,  // SCY
             0xff43 => self.scx = value,  // SCX
             0xff44 => self.ly = value,   // LY
-            0xff45 => self.lyc = value,  // LYC
+            0xff45 => {
+                self.lyc = value;
+                self.check_interrupt_lyc();
+            } // LYC
             0xff46 => self.dma = value,  // DMA
             0xff47 => self.bgp = value,  // BGP
             0xff48 => self.obp0 = value, // OBP0

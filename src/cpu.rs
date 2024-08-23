@@ -5,8 +5,7 @@ use crate::{memory::Memory, registers::{Flag, Registers}};
 pub struct CPU {
     pub registers: Registers,
     pub memory: Memory,
-    di: bool,
-    image_pending: bool,
+    ime: bool,
 }
 
 impl CPU {
@@ -15,8 +14,7 @@ impl CPU {
         CPU {
             registers: Registers::new(),
             memory: Memory::new(),
-            di: false,
-            image_pending: false,
+            ime: false,
         }
     }
 
@@ -48,8 +46,44 @@ impl CPU {
     }
 
     pub fn step(&mut self, draw: bool) {
+
+        if self.ime {
+            self.handle_interrupts();
+        }
+
         let ticks = self.call();
-        self.memory.gpu.step(ticks, draw);
+        self.memory.step(ticks, draw);
+        //self.memory.gpu.step(ticks, draw);
+
+    }
+
+    fn handle_interrupts(&mut self) {
+        let interrupt_flags = self.memory.interrupt_flags;
+        let interrupt_enable = self.memory.interrupt_enable;
+        let interrupt = interrupt_flags & interrupt_enable;
+
+        if interrupt == 0 {
+            return;
+        }
+
+        let interrupt_vector = match interrupt {
+            0x01 => 0x40,
+            0x02 => 0x48,
+            0x04 => 0x50,
+            0x08 => 0x58,
+            0x10 => 0x60,
+            _ => panic!("Invalid interrupt"),
+        };
+
+        self.call_interrupt(interrupt_vector);
+        self.memory.write(0xff0f, interrupt_flags & !interrupt);
+    }
+
+    fn call_interrupt(&mut self, address: u16) {
+        println!("Interrupt at {:#06x}", address);
+        let pc = self.registers.pc;
+        self.push_stack(pc);
+        self.registers.pc = address;
     }
 
     fn call(&mut self) -> u8 {
@@ -62,7 +96,7 @@ impl CPU {
             0x04 => { self.registers.b = self.reg_inc(self.registers.b); 4 }, // INC B
             0x05 => { self.registers.b = self.reg_dec(self.registers.b); 4 }, // DEC B
             0x06 => { self.registers.b = self.fetch_byte(); 8 }, // LD B, d8
-
+            0x07 => { self.registers.a = self.rlc(self.registers.a); self.registers.set_flag(Flag::Zero, false); 4 }, // RLCA
             0x08 => { let addr = self.fetch_word(); self.memory.write_word(addr, self.registers.sp); 20 }, // LD (a16), SP
             0x09 => { self.add_hl(self.registers.bc()); 8 }, // ADD HL, BC
             0x0A => { self.registers.a = self.memory.read(self.registers.bc()); 8 }, // LD A, (BC)
@@ -94,8 +128,8 @@ impl CPU {
             0x24 => { self.registers.h = self.reg_inc(self.registers.h); 4 }, // INC H
             0x25 => { self.registers.h = self.reg_dec(self.registers.h); 4 }, // DEC H
             0x26 => { self.registers.h = self.fetch_byte(); 8 }, // LD H, d8
-
-            0x28 => { if self.registers.get_flag(Flag::Zero) { self.jr(); 12 } else { 8 } }, // JR Z, r8
+            0x27 => { self.daa(); 4 }, // DAA
+            0x28 => { if self.registers.get_flag(Flag::Zero) { self.jr(); 12 } else { self.registers.pc += 1; 8 } }, // JR Z, r8
             0x29 => { self.add_hl(self.registers.hl()); 8 }, // ADD HL, HL
             0x2A => { self.registers.a = self.memory.read(self.registers.hli()); 8 }, // LD A, (HL+)
             0x2B => { self.registers.set_hl(self.registers.hl().wrapping_sub(1)); 8 }, // DEC HL
@@ -103,12 +137,18 @@ impl CPU {
             0x2D => { self.registers.l = self.reg_dec(self.registers.l); 4 }, // DEC L
             0x2E => { self.registers.l = self.fetch_byte(); 8 }, // LD L, d8
             0x2f => { self.registers.a = !self.registers.a; self.registers.set_flag(Flag::Sub, true); self.registers.set_flag(Flag::HalfCarry, true); 4 }, // CPL
-            0x30 => { if !self.registers.get_flag(Flag::Carry) { self.jr(); 12 } else { 8 } }, // JR NC, r8
+            0x30 => { if !self.registers.get_flag(Flag::Carry) { self.jr(); 12 } else { self.registers.pc += 1; 8 } }, // JR NC, r8
             0x31 => { self.registers.sp = self.fetch_word(); 12 }, // LD SP, d16
             0x32 => { self.memory.write(self.registers.hld(), self.registers.a); 8 }, // LD (HL-), A
             0x33 => { self.registers.sp = self.registers.sp.wrapping_add(1); 8 }, // INC SP
+            0x34 => { let v = self.memory.read(self.registers.hl()); let v2 = self.reg_inc(v); self.memory.write(self.registers.hl(), v2); 12 }, // INC (HL)
+            0x35 => { let v = self.memory.read(self.registers.hl()); let v2 = self.reg_dec(v); self.memory.write(self.registers.hl(), v2); 12 }, // DEC (HL)
             0x36 => { let v = self.fetch_byte(); self.memory.write(self.registers.hl(), v); 12 }, // LD (HL), d8
-            0x38 => { if self.registers.get_flag(Flag::Carry) { self.jr(); 12 } else { 8 } }, // JR C, r8
+            0x38 => { if self.registers.get_flag(Flag::Carry) { self.jr(); 12 } else { self.registers.pc += 1; 8 } }, // JR C, r8
+            0x3A => { self.registers.a = self.memory.read(self.registers.hld()); 8 }, // LD A, (HL-)
+            0x3B => { self.registers.sp = self.registers.sp.wrapping_sub(1); 8 }, // DEC SP
+            0x3C => { self.registers.a = self.reg_inc(self.registers.a); 4 }, // INC A
+            0x3D => { self.registers.a = self.reg_dec(self.registers.a); 4 }, // DEC A
             0x3E => { self.registers.a = self.fetch_byte(); 8 }, // LD A, d8
 
             0x40 => { self.registers.b = self.registers.b; 4 }, // LD B, B
@@ -239,7 +279,7 @@ impl CPU {
             0xBD => { self.cp(self.registers.l); 4 }, // CP L
             0xBE => { self.cp(self.memory.read(self.registers.hl())); 8 }, // CP (HL)
             0xBF => { self.cp(self.registers.a); 4 }, // CP A
-
+            0xC0 => { if !self.registers.get_flag(Flag::Zero) { self.registers.pc = self.pop_stack(); 20 } else { 8 } }, // RET NZ
             0xC1 => { let v = self.pop_stack(); self.registers.set_bc(v); 12 }, // POP BC
             0xC2 => { if !self.registers.get_flag(Flag::Zero) { self.registers.pc = self.fetch_word(); 16 } else { 12 } }, // JP NZ, a16
             0xC3 => { self.registers.pc = self.fetch_word(); 16 }, // JP a16
@@ -251,10 +291,12 @@ impl CPU {
             0xcb => { self.cb_call() + 4 }, // CB
             0xcd => { self.push_stack(self.registers.pc + 2); self.registers.pc = self.fetch_word(); 24 }, // CALL a16
             0xCE => { let v = self.fetch_byte(); self.add(v, true); 8 }, // ADC A, d8
+            0xD0 => { if !self.registers.get_flag(Flag::Carry) { self.registers.pc = self.pop_stack(); 20 } else { self.registers.pc += 1; 8 } }, // RET NC
             0xD1 => { let v = self.pop_stack(); self.registers.set_de(v); 12 }, // POP DE
             0xD5 => { self.push_stack(self.registers.de()); 16 }, // PUSH DE
             0xD6 => { let v = self.fetch_byte(); self.sub(v, false); 8 }, // SUB d8
-
+            0xD8 => { if self.registers.get_flag(Flag::Carry) { self.registers.pc = self.pop_stack(); 20 } else { 8 } }, // RET C
+            0xD9 => { self.registers.pc = self.pop_stack(); self.ime = true; 16 }, // RETI
             0xE0 => { let v = 0xFF00 | self.fetch_byte() as u16; self.memory.write(v, self.registers.a); 12 }, // LDH (a8), A
             0xe1 => { let v = self.pop_stack(); self.registers.set_hl(v); 12 }, // POP HL
             0xe2 => { let v = 0xFF00 | self.registers.c as u16; self.memory.write(v, self.registers.a); 8 }, // LD (C), A
@@ -265,10 +307,11 @@ impl CPU {
             0xef => { self.push_stack(self.registers.pc); self.registers.pc = 0x28; 16 }, // RST 28H
             0xF0 => { let v = 0xFF00 | self.fetch_byte() as u16; self.registers.a = self.memory.read(v); 12 }, // LDH A, (a8)
             0xf1 => { let v = self.pop_stack(); self.registers.set_af(v); 12 }, // POP AF
-            0xF3 => { self.di = false; 4 }, // DI
+            0xF3 => { self.ime = false; 4 }, // DI
             0xf5 => { self.push_stack(self.registers.af()); 16 }, // PUSH AF
+            0xf6 => { let v = self.fetch_byte(); self.or(v); 8 }, // OR d8
             0xfa => { let v = self.fetch_word(); self.registers.a = self.memory.read(v); 16 }, // LD A, (a16)
-            0xfb => { self.image_pending = true; 4 }
+            0xfb => { self.ime = true; 4 }
             0xFE => { let v = self.fetch_byte(); self.cp(v); 8 }, // CP d8
             0xff => { self.push_stack(self.registers.pc); self.registers.pc = 0x38; 16 }, // RST 38H
             _ => { panic!("Unimplemented opcode: {:#04x}", opcode); }
@@ -692,6 +735,26 @@ impl CPU {
         self.registers.set_flag(Flag::Zero, value & (1 << bit) == 0);
         self.registers.set_flag(Flag::Sub, false);
         self.registers.set_flag(Flag::HalfCarry, true);
+    }
+
+    fn daa(&mut self) {
+        let mut a = self.registers.a;
+        let mut adjust = 0;
+        if self.registers.get_flag(Flag::HalfCarry) || (!self.registers.get_flag(Flag::Sub) && (a & 0x0F) > 9) {
+            adjust |= 0x06;
+        }
+        if self.registers.get_flag(Flag::Carry) || (!self.registers.get_flag(Flag::Sub) && a > 0x99) {
+            adjust |= 0x60;
+            self.registers.set_flag(Flag::Carry, true);
+        }
+        if self.registers.get_flag(Flag::Sub) {
+            a = a.wrapping_sub(adjust);
+        } else {
+            a = a.wrapping_add(adjust);
+        }
+        self.registers.set_flag(Flag::Zero, a == 0);
+        self.registers.set_flag(Flag::HalfCarry, false);
+        self.registers.a = a;
     }
 
     fn res(&mut self, value: u8, bit: u8) -> u8 {

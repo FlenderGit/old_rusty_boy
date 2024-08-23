@@ -9,12 +9,12 @@ const WRAM_SIZE: usize = 0x2000;
 const HRAM_SIZE: usize = 0x7F;
 
 pub struct Memory {
-    rom: [u8; ROM_SIZE],
+    pub rom: [u8; ROM_SIZE],
     pub gpu : GPU,
     pub keypad: Keypad,
 
-    interrupt_flags: u8,
-    interrupt_enable: u8,
+    pub interrupt_flags: u8,
+    pub interrupt_enable: u8,
 
     wram: [u8; WRAM_SIZE],
     wram_bank: u8,
@@ -71,9 +71,13 @@ impl Memory {
             0xFE00..=0xFE9F => self.gpu.write_oam(address - 0xFE00, value), // OAM
             0xfea0..=0xfeff =>  (), // Unusable
             0xFF00 => self.keypad.write(value),                             // Keypad
-            0xFF01..= 0xFF02 => { warn!("Write in serial I/0. NI") },       // Serial I/O
+            0xFF01..= 0xFF02 => {
+                //warn!("Write in serial I/0. NI")
+            },       // Serial I/O
             0xff0f => self.interrupt_flags = value,                         // Interrupt Flags
-            0xff10..=0xff3f => { warn!("Write Sound I/0. NI") },                  // Sound I/O
+            0xff10..=0xff3f => {
+                //warn!("Write Sound I/0. NI")
+            },                  // Sound I/O
             0xff40..=0xFF4B => self.gpu.write(address, value),               //LCD Control, Status, Position, Scrolling, and Palettes
             0xff4f => self.gpu.vram_bank = value,                           // VRAM Bank
             0xff50 => (),                                                   // Boot ROM disable
@@ -100,6 +104,16 @@ impl Memory {
 
     pub fn read_word(&self, address: u16) -> u16 {
         (self.read(address) as u16) | ((self.read(address + 1) as u16) << 8)
+    }
+
+    pub fn step(&mut self, cycles: u8, draw: bool) {
+
+        self.interrupt_flags |= self.keypad.interrupt;
+        self.keypad.interrupt = 0;
+
+        self.gpu.step(cycles, draw);
+        self.interrupt_flags |= self.gpu.interrupt;
+        self.gpu.interrupt = 0;
     }
     
 }
