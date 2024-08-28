@@ -16,6 +16,7 @@ TO-DO :
 - [ ] Keypad
 - [X] Interrupt handling
 - [X] GPU
+- [ ] Optimize GPU
 - [ ] Add a callback in GPU to display screen using multiple ways
 
 You can view all the documentation I used [here](docs.md)

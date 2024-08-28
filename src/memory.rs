@@ -47,6 +47,7 @@ impl Memory {
             0xFE00..=0xFE9F => self.gpu.read_oam(address - 0xFE00), // OAM
             0xFF00 => self.keypad.read(),                                   // Keypad
             0xFF01..= 0xFF02 => { warn!("Read Serial I/0. NI"); 0 },       // Serial I/O
+            0xff04..=0xff07 => { warn!("Read Timer I/0. NI"); 0 },          // Timer I/O
             0xff0f => self.interrupt_flags,                                 // Interrupt Flags
             0xff10..=0xff3f => { warn!("Read Sound I/0. NI"); 0 },                  // Sound I/O
             0xff40..=0xFF4B => self.gpu.read(address),                      //LCD Control, Status, Position, Scrolling, and Palettes
@@ -68,16 +69,19 @@ impl Memory {
             0xA000..=0xBFFF => (),                                           // External RAM
             0xC000..=0xDFFF => self.wram[address as usize - 0xC000] = value, // Work RAM (WRAM) -- TD Handle WRAM bank switching
             0xE000..=0xFDFF => self.write(address - 0x2000, value),         // Echo RAM
-            0xFE00..=0xFE9F => self.gpu.write_oam(address - 0xFE00, value), // OAM
+            0xFE00..=0xFE9F => {
+                // println!("Attempted to write to OAM at address: {:#06x} value: {:#04x}", address, value);
+                self.gpu.write_oam(address - 0xFE00, value); // OAM
+            },
             0xfea0..=0xfeff =>  (), // Unusable
             0xFF00 => self.keypad.write(value),                             // Keypad
-            0xFF01..= 0xFF02 => {
-                //warn!("Write in serial I/0. NI")
-            },       // Serial I/O
+            0xFF01..= 0xFF02 => { warn!("Write in serial I/0. NI") },       // Serial I/O
+            0xff04..=0xff07 => { warn!("Write in Timer I/0. NI") },          // Timer I/O
             0xff0f => self.interrupt_flags = value,                         // Interrupt Flags
-            0xff10..=0xff3f => {
-                //warn!("Write Sound I/0. NI")
-            },                  // Sound I/O
+            0xff10..=0xff3f => { warn!("Write Sound I/0. NI") },                  // Sound I/O
+            0xff46 => { 
+                self.dma_transfer(value);
+            }                         // OAM DMA
             0xff40..=0xFF4B => self.gpu.write(address, value),               //LCD Control, Status, Position, Scrolling, and Palettes
             0xff4f => self.gpu.vram_bank = value,                           // VRAM Bank
             0xff50 => (),                                                   // Boot ROM disable
@@ -99,6 +103,13 @@ impl Memory {
     pub fn load_rom(&mut self, data: &Vec<u8>) {
         for i in 0..ROM_SIZE {
             self.rom[i] = data[i];
+        }
+    }
+
+    pub fn dma_transfer(&mut self, address: u8) {
+        let start = address as u16 * 0x100;
+        for i in 0..0xA0 {
+            self.write(0xFE00 + i, self.read(start + i));
         }
     }
 

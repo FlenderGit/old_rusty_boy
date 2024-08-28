@@ -6,6 +6,7 @@ enum Row {
     Row1,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum Key {
     A,
     B,
@@ -18,7 +19,7 @@ pub enum Key {
 }
 
 pub struct Keypad {
-    data: u8,
+    pub data: u8,
     row0: u8,
     row1: u8,
     pub interrupt: u8,
@@ -56,6 +57,18 @@ impl Keypad {
         self.data = (self.data & 0xF0) | new;
     }
 
+    pub fn is_pressed(&self, key: Key) -> bool {
+        match key {
+            Key::A => self.row0 & 0b0001 == 0,
+            Key::B => self.row0 & 0b0010 == 0,
+            Key::Select => self.row0 & 0b0100 == 0,
+            Key::Start => self.row0 & 0b1000 == 0,
+            Key::Right => self.row1 & 0b0001 == 0,
+            Key::Left => self.row1 & 0b0010 == 0,
+            Key::Up => self.row1 & 0b0100 == 0,
+            Key::Down => self.row1 & 0b1000 == 0,
+        }
+    }
 
     pub fn press(&mut self, key: Key) {
         match key {
@@ -68,6 +81,7 @@ impl Keypad {
             Key::Up => self.row1 &= 0b1011,
             Key::Down => self.row1 &= 0b0111,
         }
+        self.update();
     }
 
     pub fn release(&mut self, key: Key) {
@@ -81,6 +95,7 @@ impl Keypad {
             Key::Up => self.row1 |= 0b0100,
             Key::Down => self.row1 |= 0b1000,
         }
+        self.update();
     }
 }
 

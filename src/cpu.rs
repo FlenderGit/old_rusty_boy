@@ -1,4 +1,4 @@
-use log::{info, trace};
+use log::info;
 
 use crate::{memory::Memory, registers::{Flag, Registers}};
 
@@ -45,7 +45,7 @@ impl CPU {
         self.step(true);
     }
 
-    pub fn step(&mut self, draw: bool) {
+    pub fn step(&mut self, draw: bool) -> u8 {
 
         if self.ime {
             self.handle_interrupts();
@@ -54,7 +54,7 @@ impl CPU {
         let ticks = self.call();
         self.memory.step(ticks, draw);
         //self.memory.gpu.step(ticks, draw);
-
+        ticks
     }
 
     fn handle_interrupts(&mut self) {
@@ -72,7 +72,7 @@ impl CPU {
             0x04 => 0x50,
             0x08 => 0x58,
             0x10 => 0x60,
-            _ => panic!("Invalid interrupt"),
+            _ => panic!("Invalid interrupt: {:#04x}, PC: {:#06x}", interrupt, self.registers.pc),
         };
 
         self.call_interrupt(interrupt_vector);
@@ -80,7 +80,7 @@ impl CPU {
     }
 
     fn call_interrupt(&mut self, address: u16) {
-        println!("Interrupt at {:#06x}", address);
+        //println!("Interrupt at {:#06x}", address);
         let pc = self.registers.pc;
         self.push_stack(pc);
         self.registers.pc = address;
@@ -304,6 +304,7 @@ impl CPU {
             0xe6 => { let v = self.fetch_byte(); self.and(v); 8 }, // AND d8
             0xe9 => { self.registers.pc = self.registers.hl(); 4 }, // JP (HL)
             0xea => { let v = self.fetch_word(); self.memory.write(v, self.registers.a); 16 }, // LD (a16), A
+            0xee => { let v = self.fetch_byte(); self.xor(v); 8 }, // XOR d8
             0xef => { self.push_stack(self.registers.pc); self.registers.pc = 0x28; 16 }, // RST 28H
             0xF0 => { let v = 0xFF00 | self.fetch_byte() as u16; self.registers.a = self.memory.read(v); 12 }, // LDH A, (a8)
             0xf1 => { let v = self.pop_stack(); self.registers.set_af(v); 12 }, // POP AF

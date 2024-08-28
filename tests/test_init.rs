@@ -1,9 +1,10 @@
-use gb_emulator::game::Game;
+use rusty_boy::gameboy::Gameboy;
 
 #[test]
 fn test_header() {
     
-    let game = Game::new("roms/tetris.gb");
+    let gb = Gameboy::new();
+    gb.load_rom("roms/tetris.gb");
 
     let title = "TETRIS";
     let mut title_bytes = [0; 16];

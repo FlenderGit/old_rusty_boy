@@ -1,5 +1,4 @@
-use gb_emulator::gameboy::Gameboy;
-use log::warn;
+use rusty_boy::gameboy::Gameboy;
 
 fn main() {
 
@@ -7,6 +6,23 @@ fn main() {
 
     let mut game = Gameboy::new();
     game.load_rom(std::fs::read("roms/tetris.gb").unwrap());
-    game.run();
+    game.set_render_callback(|screen_data| {
+        for y in 0..144 {
+            for x in 0..160 {
+                print!(
+                    "{}",
+                    match screen_data[y * 160 * 3 + x * 3] {
+                        3 => "  ",
+                        2 => "░░",
+                        1 => "▒▒",
+                        0 => "▓▓",
+                        _ => "  ",
+                    }
+                );
+            }
+            println!();
+        }
+    });
+    game.run_debug();
     
 }

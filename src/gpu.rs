@@ -14,6 +14,14 @@ enum Mode {
     DRAWING, // 172 cycles : dessine les pixels de la ligne actuelle
 }
 
+#[derive(Debug)]
+struct Sprite {
+    y: u8,
+    x: u8,
+    tile: u8,
+    flags: u8,
+}
+
 pub struct GPU {
     mode: Mode,
     clock: u32,
@@ -103,9 +111,9 @@ impl GPU {
             Mode::DRAWING => {
                 if self.clock >= 172 {
                     self.clock -= 172;
-                    self.mode = Mode::HBlank;    
+                    self.mode = Mode::HBlank;
+                    self.render_scanline();
                     if draw {
-                        self.render_scanline();
                         self.print_line();
                     }
                 }
@@ -130,6 +138,7 @@ impl GPU {
 
     pub fn render_scanline(&mut self) {
         self.draw_tiles();
+        self.draw_sprites();
     }
 
     pub fn draw_tiles(&mut self) {
@@ -195,10 +204,82 @@ impl GPU {
         }
     }
 
+    fn draw_sprites(&mut self) {
+        let line = self.ly;
+        let sprite_size = self.lcdc & 0x04 == 0x04;
+        let mut sprite_count = 0;
+        let mut sprites = Vec::<Sprite>::with_capacity(10);
+
+        for i in 0..40 {
+            let spite_addr = i * 4;
+            
+            let sprite_y = self.oam[spite_addr].wrapping_sub(16);
+            if line < sprite_y || line >= sprite_y + 8 { continue; }
+
+            let sprite_x = self.oam[spite_addr + 1].wrapping_sub(8);
+            if sprite_x == 0 || sprite_x >= SCREEN_WIDTH as u8 { continue; }
+
+            let sprite = Sprite {
+                y: sprite_y,
+                x: sprite_x,
+                tile: self.oam[spite_addr + 2],
+                flags: self.oam[spite_addr + 3],
+            };
+
+            sprites.push(sprite);
+            sprite_count += 1;
+
+
+            if sprite_count >= 10 { break; }
+        }
+
+        for sprite in sprites {
+            let flip_y = sprite.flags & 0x40 == 0x40;
+            let flip_x = sprite.flags & 0x20 == 0x20;
+            let on_win = sprite.flags & 0x80 == 0x80;
+            let tile_y = if flip_y {
+                7 - (line - sprite.y)
+            } else {
+                line - sprite.y
+            };
+            let tile_addr = 0x8000 + sprite.tile as u16 * 16 + tile_y as u16 * 2;
+            let low_byte = self.read_vram(tile_addr);
+            let high_byte = self.read_vram(tile_addr + 1);
+
+            for x in 0..8 {
+                let tile_x = if flip_x { x } else { 7 - x };
+                let color_bit = tile_x;
+                let color_id = ((high_byte >> color_bit) & 0x1) << 1 | ((low_byte >> color_bit) & 0x1);
+                let color = match color_id {
+                    0 => self.obp0 & 0x03,
+                    1 => (self.obp0 >> 2) & 0x03,
+                    2 => (self.obp0 >> 4) & 0x03,
+                    3 => (self.obp0 >> 6) & 0x03,
+                    _ => 0,
+                };
+
+                let x_pos = sprite.x.wrapping_add(x);
+                if x_pos >= SCREEN_WIDTH as u8 { continue; }
+                if sprite.flags & 0x80 == 0x80 && self.lcdc & 0x20 == 0x20 { continue; }
+                
+                self.screen_data[(self.ly as usize * SCREEN_WIDTH + x_pos as usize) * 3] = color;
+                self.screen_data[(self.ly as usize * SCREEN_WIDTH + x_pos as usize) * 3 + 1] = color;
+                self.screen_data[(self.ly as usize * SCREEN_WIDTH + x_pos as usize) * 3 + 2] = color;
+            }
+        }
+    }
+
     pub fn set_color(&mut self, x: usize, color: u8) {
-        self.screen_data[self.ly as usize * SCREEN_WIDTH * 3 + x * 3] = color;
-        self.screen_data[self.ly as usize * SCREEN_WIDTH * 3 + x * 3 + 1] = color;
-        self.screen_data[self.ly as usize * SCREEN_WIDTH * 3 + x * 3 + 2] = color;
+
+        let index = self.ly as usize * SCREEN_WIDTH * 3 + x * 3;
+        if index >= SCREEN_HEIGHT * SCREEN_WIDTH * 3 {
+            panic!("Index out of bounds: {}, x: {}, ly: {}", index, x, self.ly);
+            return;
+        }
+
+        self.screen_data[index] = color;
+        self.screen_data[index + 1] = color;
+        self.screen_data[index + 2] = color;
     }
 
     fn print_line(&self) {

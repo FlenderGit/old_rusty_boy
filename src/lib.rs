@@ -3,5 +3,6 @@ mod cpu;
 mod gpu;
 mod registers;
 mod memory;
-mod keypad;
+pub mod keypad;
 mod header;
+mod time;
