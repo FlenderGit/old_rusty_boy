@@ -6,3 +6,4 @@ mod memory;
 pub mod keypad;
 mod header;
 mod time;
+mod timer;

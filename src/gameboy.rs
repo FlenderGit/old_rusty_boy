@@ -1,18 +1,18 @@
 use crate::cpu::CPU;
 use crate::header::Header;
-use crate::keypad::Key;
+use crate::keypad::{Key, KeyEvent};
 use crate::time;
 
-const FRAME_TIME: f64 = 1.0 / 40.0;
+const FRAME_TIME: f64 = 1.0 / 30.0;
 const CYCLES_PER_SECOND: u32 = 4_194_304;
 const CYCLES_PER_FRAME: u32 = CYCLES_PER_SECOND / 60;
 
 pub struct Gameboy {
     pub cpu: CPU,
-    header: Header,
+    header: Option<Header>,
     
     render_callback: Box<dyn FnMut(&[u8; 160 * 144 * 3]) + 'static>,
-    input_callback: Box<dyn FnMut() -> Option<Key> + 'static>,
+    input_callback: Box<dyn FnMut() -> Option<KeyEvent> + 'static>,
 
     pub previous_time: f64,
     pub lag: f64,
@@ -22,7 +22,7 @@ impl Gameboy {
     pub fn new() -> Gameboy {
         Gameboy {
             cpu: CPU::new(),
-            header: Header::new(),
+            header: None,
             render_callback: Box::new(|_| {
                 panic!("No render callback set!");
             }),
@@ -35,8 +35,19 @@ impl Gameboy {
         }
     }
 
+    pub fn load_rom_from_filename(&mut self, filename: &str ) {
+
+        if !std::path::Path::new(&filename).exists() {
+            panic!("File not found: {}", filename);
+        }
+
+        let rom = std::fs::read(filename).unwrap();
+        self.load_rom(rom);
+    }
+
     pub fn load_rom(&mut self, rom: Vec<u8>) {
         self.cpu.memory.load_rom(&rom);
+        self.header = Some(Header::load_rom(&rom));
     }
 
     pub fn get_screen_data(&self) -> &[u8; 160 * 144 * 3] {
@@ -52,7 +63,7 @@ impl Gameboy {
 
     pub fn set_input_callback<F>(&mut self, callback: F)
     where
-        F: FnMut() -> Option<Key> + 'static,
+        F: FnMut() -> Option<KeyEvent> + 'static,
     {
         self.input_callback = Box::new(callback);
     }
@@ -69,9 +80,7 @@ impl Gameboy {
             cycles += 1;
         }
         self.render();
-        println!("FPS: {}", 1.0 / elapsed);
-        println!("Cycles: {}", cycles);
-        println!("Lag: {}", self.lag);
+        println!("FPS: {:.2} Cycles: {:.2} Lag: {:.2} keypad {:#04x}", 1.0 / elapsed, cycles, self.lag, self.cpu.memory.keypad.read());
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -115,14 +124,15 @@ impl Gameboy {
         if let Some(key) = (self.input_callback)() {
             // Test if the key is pressed
 
-            if self.cpu.memory.keypad.is_pressed(key) {
-                self.cpu.memory.keypad.release(key);
-                println!("Key released: {:?}", key);
-            } else {
-                self.cpu.memory.keypad.press(key);
-                println!("Key pressed: {:?}", key);
+            match key {
+                KeyEvent::Press(key) => {
+                    self.cpu.memory.keypad.press(key);
+                }
+                KeyEvent::Release(key) => {
+                    self.cpu.memory.keypad.release(key);
+                }
+                
             }
-            println!("Keypad: {:#04x}", self.cpu.memory.keypad.data);
 
 
         }
@@ -175,5 +185,13 @@ impl Gameboy {
         println!("OAM: {:#04x}", self.cpu.memory.read(0xfe11));
         println!("OAM: {:#04x}", self.cpu.memory.read(0xfe12));
         println!("OAM: {:#04x}", self.cpu.memory.read(0xfe13));
+    }
+
+    pub fn header(&self) -> &Header {
+        if let Some(header) = &self.header {
+            return header;
+        } else {
+            panic!("No header find. Please load a ROM first.");
+        }
     }
 }

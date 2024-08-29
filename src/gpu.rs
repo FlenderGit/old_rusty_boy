@@ -1,5 +1,3 @@
-use log::info;
-
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 
@@ -274,7 +272,6 @@ impl GPU {
         let index = self.ly as usize * SCREEN_WIDTH * 3 + x * 3;
         if index >= SCREEN_HEIGHT * SCREEN_WIDTH * 3 {
             panic!("Index out of bounds: {}, x: {}, ly: {}", index, x, self.ly);
-            return;
         }
 
         self.screen_data[index] = color;

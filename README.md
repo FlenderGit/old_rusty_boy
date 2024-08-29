@@ -13,11 +13,14 @@ The goal is to use WASM to show the emulation inside a browser.
 
 TO-DO :
 - [ ] ADD ALL OPCODE
-- [ ] Keypad
+- [X] Keypad
 - [X] Interrupt handling
-- [X] GPU
-- [ ] Optimize GPU
-- [ ] Add a callback in GPU to display screen using multiple ways
+- [ ] GPU -- handle multiple VRAM
+- [ ] serial
+- [ ] musics
+- [ ] timer
+- [ ] MBSs (Memory bank switching)
+- [X] Add a callback for render & inputs 
 
 You can view all the documentation I used [here](docs.md)
 

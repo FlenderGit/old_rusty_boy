@@ -80,7 +80,6 @@ impl CPU {
     }
 
     fn call_interrupt(&mut self, address: u16) {
-        //println!("Interrupt at {:#06x}", address);
         let pc = self.registers.pc;
         self.push_stack(pc);
         self.registers.pc = address;
@@ -578,7 +577,6 @@ impl CPU {
             0xFD => { self.registers.l = self.set(self.registers.l, 7); 8 }, // SET 7, L
             0xFE => { let v = self.memory.read(self.registers.hl()); let v2 = self.set(v, 7); self.memory.write(self.registers.hl(), v2); 16 }, // SET 7, (HL)
             0xFF => { self.registers.a = self.set(self.registers.a, 7); 8 }, // SET 7, A
-            _ => { panic!("Unimplemented CB opcode: {:#04x}", opcode); }
         }
     }
 

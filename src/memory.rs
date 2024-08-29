@@ -1,6 +1,6 @@
 use log::{info, warn};
 
-use crate::{gpu::GPU, keypad::Keypad};
+use crate::{gpu::GPU, keypad::Keypad, timer::Timer};
 
 
 const ROM_SIZE: usize = 0x8000;
@@ -16,6 +16,8 @@ pub struct Memory {
     pub interrupt_flags: u8,
     pub interrupt_enable: u8,
 
+    timer: Timer,
+
     wram: [u8; WRAM_SIZE],
     wram_bank: u8,
     hram: [u8; HRAM_SIZE],
@@ -27,6 +29,8 @@ impl Memory {
             rom: [0; ROM_SIZE],
             gpu: GPU::new(),
             keypad: Keypad::new(),
+
+            timer: Timer::new(),
 
             wram: [0; WRAM_SIZE],
             wram_bank: 0,
@@ -47,7 +51,7 @@ impl Memory {
             0xFE00..=0xFE9F => self.gpu.read_oam(address - 0xFE00), // OAM
             0xFF00 => self.keypad.read(),                                   // Keypad
             0xFF01..= 0xFF02 => { warn!("Read Serial I/0. NI"); 0 },       // Serial I/O
-            0xff04..=0xff07 => { warn!("Read Timer I/0. NI"); 0 },          // Timer I/O
+            0xff04..=0xff07 => { self.timer.read(address) },          // Timer I/O
             0xff0f => self.interrupt_flags,                                 // Interrupt Flags
             0xff10..=0xff3f => { warn!("Read Sound I/0. NI"); 0 },                  // Sound I/O
             0xff40..=0xFF4B => self.gpu.read(address),                      //LCD Control, Status, Position, Scrolling, and Palettes
@@ -76,7 +80,7 @@ impl Memory {
             0xfea0..=0xfeff =>  (), // Unusable
             0xFF00 => self.keypad.write(value),                             // Keypad
             0xFF01..= 0xFF02 => { warn!("Write in serial I/0. NI") },       // Serial I/O
-            0xff04..=0xff07 => { warn!("Write in Timer I/0. NI") },          // Timer I/O
+            0xff04..=0xff07 => { self.timer.write(address, value) },          // Timer I/O
             0xff0f => self.interrupt_flags = value,                         // Interrupt Flags
             0xff10..=0xff3f => { warn!("Write Sound I/0. NI") },                  // Sound I/O
             0xff46 => { 
@@ -125,6 +129,10 @@ impl Memory {
         self.gpu.step(cycles, draw);
         self.interrupt_flags |= self.gpu.interrupt;
         self.gpu.interrupt = 0;
+
+        self.timer.step(cycles);
+        self.interrupt_flags |= self.timer.interrupt;
+        self.timer.interrupt = 0;
     }
     
 }

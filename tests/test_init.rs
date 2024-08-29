@@ -1,17 +1,17 @@
-use rusty_boy::gameboy::Gameboy;
+#[cfg(test)]
+mod tests {
+    use rusty_boy::gameboy::Gameboy;
 
-#[test]
-fn test_header() {
-    
-    let gb = Gameboy::new();
-    gb.load_rom("roms/tetris.gb");
+    #[test]
+    fn test_header() {
+        let mut gb = Gameboy::new();
+        gb.load_rom_from_filename("roms/tetris.gb");
 
-    let title = "TETRIS";
-    let mut title_bytes = [0; 16];
-    title_bytes[..title.len()].copy_from_slice(title.as_bytes());
+        let header = gb.header();
 
-    assert_eq!(game.header.title, title_bytes );
-    assert_eq!(game.header.rom_size, 0x02);
-    assert_eq!(game.header.ram_size, 0x00);
+        assert_eq!(header.title(), "TETRIS");
+        assert_eq!(header.manufacturer_code(), "");
+        assert_eq!(header.cgb_flag(), 0x00);
 
+    }
 }
