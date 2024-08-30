@@ -1,5 +1,5 @@
-    const ROW0_FLAG: u8 = 0x10;
-    const ROW1_FLAG: u8 = 0x20;
+const ROW0_FLAG: u8 = 0x10;
+const ROW1_FLAG: u8 = 0x20;
 
     #[derive(Clone, Copy, Debug)]
     pub enum Key {
@@ -62,8 +62,6 @@
             }
         
             self.data = (self.data & 0xF0) | new;
-            //println!("Keypad: {:#08b}", self.data);
-
         }
         
 
@@ -107,5 +105,49 @@
             }
             self.update();
         }
+    }
+
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /* #[test]
+        fn test_keypad_press() {
+            let mut keypad = Keypad::new();
+            keypad.press(Key::Right);
+            assert_eq!(keypad.read(), 0b1110_1111);
+        }
+
+        #[test]
+        fn test_keypad_release() {
+            let mut keypad = Keypad::new();
+            keypad.press(Key::Right);
+            keypad.press(Key::Left);
+            keypad.release(Key::Right);
+            assert_eq!(keypad.read(), 0b1101_1111);
+        }
+
+        #[test]
+        fn test_keypad_interrupt() {
+            let mut keypad = Keypad::new();
+            keypad.press(Key::Right);
+            assert_eq!(keypad.interrupt, 0x10);
+        } */
+
+        #[test]
+        fn test_keypad_is_pressed() {
+            let mut keypad = Keypad::new();
+            keypad.press(Key::Right);
+            assert_eq!(keypad.is_pressed(Key::Right), true);
+        }
+
+        #[test]
+        fn test_keypad_is_not_pressed() {
+            let keypad = Keypad::new();
+            assert_eq!(keypad.is_pressed(Key::Left), false);
+        }        
+
+
     }
 

@@ -109,3 +109,144 @@ impl Registers {
     }
 
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registers() {
+        let mut registers = Registers::new();
+        assert_eq!(registers.a, 0x01);
+        assert_eq!(registers.b, 0x00);
+        assert_eq!(registers.c, 0x13);
+        assert_eq!(registers.d, 0x00);
+        assert_eq!(registers.e, 0xd8);
+        assert_eq!(registers.h, 0x01);
+        assert_eq!(registers.l, 0x4d);
+        assert_eq!(registers.f, 0xb0);
+        assert_eq!(registers.sp, 0xfffe);
+        assert_eq!(registers.pc, 0x0100);
+    }
+
+    #[test]
+    fn test_registers_bc() {
+        let mut registers = Registers::new();
+        registers.b = 0x12;
+        registers.c = 0x34;
+        assert_eq!(registers.bc(), 0x1234);
+    }
+
+    #[test]
+    fn test_registers_de() {
+        let mut registers = Registers::new();
+        registers.d = 0x12;
+        registers.e = 0x34;
+        assert_eq!(registers.de(), 0x1234);
+    }
+
+    #[test]
+    fn test_registers_hl() {
+        let mut registers = Registers::new();
+        registers.h = 0x12;
+        registers.l = 0x34;
+        assert_eq!(registers.hl(), 0x1234);
+    }
+
+    #[test]
+    fn test_registers_af() {
+        let mut registers = Registers::new();
+        registers.a = 0x12;
+        registers.f = 0x34;
+        assert_eq!(registers.af(), 0x1234);
+    }
+
+    #[test]
+    fn test_registers_hli() {
+        let mut registers = Registers::new();
+        registers.h = 0x12;
+        registers.l = 0x34;
+        assert_eq!(registers.hli(), 0x1234);
+        assert_eq!(registers.hl(), 0x1235);
+    }
+
+    #[test]
+    fn test_registers_hld() {
+        let mut registers = Registers::new();
+        registers.h = 0x12;
+        registers.l = 0x34;
+        assert_eq!(registers.hld(), 0x1234);
+        assert_eq!(registers.hl(), 0x1233);
+    }
+
+    #[test]
+    fn test_registers_set_bc() {
+        let mut registers = Registers::new();
+        registers.set_bc(0x1234);
+        assert_eq!(registers.b, 0x12);
+        assert_eq!(registers.c, 0x34);
+    }
+
+    #[test]
+    fn test_registers_set_de() {
+        let mut registers = Registers::new();
+        registers.set_de(0x1234);
+        assert_eq!(registers.d, 0x12);
+        assert_eq!(registers.e, 0x34);
+    }
+
+    #[test]
+    fn test_registers_set_hl() {
+        let mut registers = Registers::new();
+        registers.set_hl(0x1234);
+        assert_eq!(registers.h, 0x12);
+        assert_eq!(registers.l, 0x34);
+    }
+
+    #[test]
+    fn test_registers_set_af() {
+        let mut registers = Registers::new();
+        registers.set_af(0x1234);
+        assert_eq!(registers.a, 0x12);
+        assert_eq!(registers.f, 0x34);
+    }
+
+    #[test]
+    // Cause Sub is the only flag not set in the default value
+    fn test_registers_up_flag() {
+        let mut registers = Registers::new();
+        registers.up_flag(Flag::Sub);
+        assert_eq!(registers.f, 0xb0 | Flag::Sub as u8);
+    }
+
+    #[test]
+    fn test_registers_down_flag() {
+        let mut registers = Registers::new();
+        registers.up_flag(Flag::Sub);
+        registers.down_flag(Flag::Sub);
+        assert_eq!(registers.f, 0xb0);
+    }
+
+    #[test]
+    fn test_registers_set_flag() {
+        let mut registers = Registers::new();
+        registers.f = 0x0;
+        registers.set_flag(Flag::Zero, true);
+        assert_eq!(registers.f, Flag::Zero as u8);
+        registers.set_flag(Flag::Zero, false);
+        assert_eq!(registers.f, 0x0);
+    }
+
+    #[test]
+    fn test_registers_get_flag() {
+        let mut registers = Registers::new();
+        registers.f = 0xb0;
+        assert_eq!(registers.get_flag(Flag::Zero), true);
+        assert_eq!(registers.get_flag(Flag::Sub), false);
+        assert_eq!(registers.get_flag(Flag::HalfCarry), true);
+        assert_eq!(registers.get_flag(Flag::Carry), true);
+    }
+    
+
+}

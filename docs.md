@@ -20,3 +20,8 @@ PDF :
 Github :
 - [veikkos/chester](https://github.com/veikkos/chester)
 - [mvdnes/rboy](https://github.com/mvdnes/rboy)
+
+
+Calculate HC :
+- 8bit  : HC = (((a & 0xF) + (b & 0xF)) & 0x10) == 0x10
+- 16bit : HC = (((a & 0xFFF) + (b & 0xFFF)) & 0x1000) == 0x1000

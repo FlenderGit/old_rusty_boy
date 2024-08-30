@@ -779,7 +779,7 @@ impl CPU {
         let hl = self.registers.hl();
         let result = hl.wrapping_add(value);
         self.registers.set_flag(Flag::Sub, false);
-        self.registers.set_flag(Flag::HalfCarry, (hl & 0x0FFF) + (value & 0x0FFF) > 0x0FFF);
+        self.registers.set_flag(Flag::HalfCarry, (((hl & 0xFFF) + (value & 0xFFF)) & 0x1000) == 0x1000);
         self.registers.set_flag(Flag::Carry, hl > 0xFFFF - value);
         self.registers.set_hl(result);
     }
@@ -787,6 +787,389 @@ impl CPU {
     fn jr(&mut self) {
         let offset = self.fetch_byte() as i8 as u16;
         self.registers.pc = self.registers.pc.wrapping_add(offset);
+    }
+
+}
+
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_reg_inc() {
+        let mut cpu = CPU::new();
+        let result = cpu.reg_inc(0x00);
+        assert_eq!(result, 0x01);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+
+        let result = cpu.reg_inc(0xFF);
+        assert_eq!(result, 0x00);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+    }
+
+    #[test]
+    fn test_reg_dec() {
+        let mut cpu = CPU::new();
+        let result = cpu.reg_dec(0x01);
+        assert_eq!(result, 0x00);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+
+        let result = cpu.reg_dec(0x00);
+        assert_eq!(result, 0xFF);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+    }
+
+    #[test]
+    fn test_add() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = 0x01;
+        cpu.add(0x02, false);
+        assert_eq!(cpu.registers.a, 0x03);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        cpu.registers.a = 0xFF;
+        cpu.add(0x01, false);
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+    }
+
+    #[test]
+    fn test_sub() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = 0x03;
+        cpu.sub(0x02, false);
+        assert_eq!(cpu.registers.a, 0x01);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        cpu.registers.a = 0x00;
+        cpu.sub(0x01, false);
+        assert_eq!(cpu.registers.a, 0xFF);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+    }
+
+    #[test]
+    fn test_and() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = 0b1010_1010;
+        cpu.and(0b1100_1100);
+        assert_eq!(cpu.registers.a, 0b1000_1000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }
+
+    #[test]
+    fn test_xor() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = 0b1010_1010;
+        cpu.xor(0b1100_1100);
+        assert_eq!(cpu.registers.a, 0b0110_0110);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        cpu.registers.a = 0b0000_0000;
+        cpu.xor(0b0000_0000);
+        assert_eq!(cpu.registers.a, 0b0000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }
+
+    #[test]
+    fn test_or() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = 0b1010_1010;
+        cpu.or(0b1100_1100);
+        assert_eq!(cpu.registers.a, 0b1110_1110);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        cpu.registers.a = 0b0000_0000;
+        cpu.or(0b0000_0000);
+        assert_eq!(cpu.registers.a, 0b0000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }   // Completed
+
+    #[test]
+    fn test_cp() {
+        let mut cpu = CPU::new();
+        cpu.registers.a = 0x03;
+        cpu.cp(0x02);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        cpu.registers.a = 0x02;
+        cpu.cp(0x02);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        cpu.registers.a = 0x02;
+        cpu.cp(0x03);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+    }
+
+    #[test]
+    fn test_rlc() {
+        let mut cpu = CPU::new();
+        let result = cpu.rlc(0b1000_0000);
+        assert_eq!(result, 0b0000_0001);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+
+        let result = cpu.rlc(0b0000_0001);
+        assert_eq!(result, 0b0000_0010);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }
+
+    #[test]
+    fn test_rrc() {
+        let mut cpu = CPU::new();
+        let result = cpu.rrc(0b0000_0001);
+        assert_eq!(result, 0b1000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+
+        let result = cpu.rrc(0b1000_0000);
+        assert_eq!(result, 0b0100_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }
+
+    #[test]
+    fn test_rl() {
+        let mut cpu = CPU::new();
+        cpu.registers.set_flag(Flag::Carry, true);
+        let result = cpu.rl(0b1000_0000);
+        assert_eq!(result, 0b0000_0001);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+
+        let result = cpu.rl(0b0000_0001);
+        assert_eq!(result, 0b0000_0011);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }
+
+    #[test]
+    fn test_rr() {
+        let mut cpu = CPU::new();
+        cpu.registers.set_flag(Flag::Carry, true);
+        let result = cpu.rr(0b0000_0001);
+        assert_eq!(result, 0b1000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+
+        let result = cpu.rr(0b1000_0000);
+        assert_eq!(result, 0b1100_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }
+
+    #[test]
+    fn test_sla() {
+        let mut cpu = CPU::new();
+        let result = cpu.sla(0b1000_0000);
+        assert_eq!(result, 0b0000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+
+        let result = cpu.sla(0b0000_0001);
+        assert_eq!(result, 0b0000_0010);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }
+
+    #[test]
+    fn test_sra() {
+        let mut cpu = CPU::new();
+        let result = cpu.sra(0b1000_0000);
+        assert_eq!(result, 0b1100_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        let result = cpu.sra(0b0000_0001);
+        assert_eq!(result, 0b0000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+    }
+
+    #[test]
+    fn test_swap() {
+        let mut cpu = CPU::new();
+        let result = cpu.swap(0b1001_0110);
+        assert_eq!(result, 0b0110_1001);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        let result = cpu.swap(0b0000_0000);
+        assert_eq!(result, 0b0000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+    }   // Completed
+
+    #[test]
+    fn test_srl() {
+        let mut cpu = CPU::new();
+        let result = cpu.srl(0b1000_0000);
+        assert_eq!(result, 0b0100_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        let result = cpu.srl(0b0000_0001);
+        assert_eq!(result, 0b0000_0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+    }   // Completed
+
+    #[test]
+    fn test_bit() {
+        let mut cpu = CPU::new();
+        cpu.bit(0b1010_1011, 3);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+
+        cpu.bit(0b1010_1010, 2);
+        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+    }   // Completed
+
+    #[test]
+    fn test_res() {
+        let mut cpu = CPU::new();
+        let result = cpu.res(0b1010_1010, 3);
+        assert_eq!(result, 0b1010_0010);
+
+        let result = cpu.res(0b1010_1010, 2);
+        assert_eq!(result, 0b1010_1010);
+    }   // Completed
+
+    #[test]
+    fn test_set() {
+        let mut cpu = CPU::new();
+        let result = cpu.set(0b1010_1010, 4);
+        assert_eq!(result, 0b1011_1010);
+
+        let result = cpu.set(0b1010_1010, 3);
+        assert_eq!(result, 0b1010_1010);
+    }   // Completed
+
+    #[test]
+    fn test_push_stack() {
+        let mut cpu = CPU::new();
+        cpu.registers.sp = 0xFFFE;
+        cpu.push_stack(0x1234);
+        assert_eq!(cpu.memory.read_word(0xFFFC), 0x1234);
+        assert_eq!(cpu.registers.sp, 0xFFFC);
+    }
+
+    #[test]
+    fn test_pop_stack() {
+        let mut cpu = CPU::new();
+        cpu.memory.write_word(0xFFFC, 0x1234);
+        cpu.registers.sp = 0xFFFC;
+        let result = cpu.pop_stack();
+        assert_eq!(result, 0x1234);
+        assert_eq!(cpu.registers.sp, 0xFFFE);
+    }
+
+    #[test]
+    fn test_add_hl() {
+        let mut cpu = CPU::new();
+        cpu.registers.set_hl(0x1234);
+        cpu.add_hl(0x5678);
+        assert_eq!(cpu.registers.hl(), 0x68AC);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
+
+        cpu.registers.set_hl(0xFFFF);
+        cpu.add_hl(0x0001);
+        assert_eq!(cpu.registers.hl(), 0x0000);
+        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
+        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
+        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
+    }
+
+    #[test]
+    fn test_jr() {
+        let mut cpu = CPU::new();
+        cpu.registers.pc = 0x8fbc;
+        cpu.memory.write(0x8fbc, 0x03);
+        cpu.jr();
+        assert_eq!(cpu.registers.pc, 0x8fc0);
     }
 
 }
