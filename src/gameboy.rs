@@ -1,6 +1,6 @@
 use crate::cpu::CPU;
 use crate::header::Header;
-use crate::keypad::{Key, KeyEvent};
+use crate::keypad::KeyEvent;
 use crate::time;
 
 const FRAME_TIME: f64 = 1.0 / 30.0;

@@ -1,9 +1,8 @@
-use log::{info, warn};
+use log::warn;
 
 use crate::{gpu::GPU, keypad::Keypad, timer::Timer};
 
 const ROM_SIZE: usize = 0x8000;
-const RAM_SIZE: usize = 0x2000;
 const WRAM_SIZE: usize = 0x2000;
 const HRAM_SIZE: usize = 0x7F;
 

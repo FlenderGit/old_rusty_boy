@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_registers() {
-        let mut registers = Registers::new();
+        let registers = Registers::new();
         assert_eq!(registers.a, 0x01);
         assert_eq!(registers.b, 0x00);
         assert_eq!(registers.c, 0x13);

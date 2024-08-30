@@ -142,8 +142,8 @@ impl GPU {
     }
 
     pub fn draw_tiles(&mut self) {
-        let win_on = self.lcdc & 0x20 == 0x20;
-        let bg_on = self.lcdc & 0x01 == 0x01;
+        let _win_on = self.lcdc & 0x20 == 0x20;
+        let _bg_on = self.lcdc & 0x01 == 0x01;
 
         let bg_y = self.ly.wrapping_add(self.scy);
         let bg_tile_y = bg_y >> 3;
@@ -155,7 +155,7 @@ impl GPU {
             let win_x = x as u8 - self.wx + 7;
             let bg_x = x as u8 + self.scx;
 
-            let (tilemap_addr, tile_y, tile_x, pixel_y, pixel_x) = if win_y >= 0 && win_x >= 0 && false {
+            let (tilemap_addr, tile_y, tile_x, pixel_y, pixel_x) = if /* win_y >= 0 && win_x >= 0 && */ false {
                 (
                     0x9800,
                     win_tile_y,
@@ -205,7 +205,7 @@ impl GPU {
 
     fn draw_sprites(&mut self) {
         let line = self.ly;
-        let sprite_size = self.lcdc & 0x04 == 0x04;
+        let _sprite_size = self.lcdc & 0x04 == 0x04;
         let mut sprite_count = 0;
         let mut sprites = Vec::<Sprite>::with_capacity(10);
 
@@ -235,7 +235,7 @@ impl GPU {
         for sprite in sprites {
             let flip_y = sprite.flags & 0x40 == 0x40;
             let flip_x = sprite.flags & 0x20 == 0x20;
-            let on_win = sprite.flags & 0x80 == 0x80;
+            let _on_win = sprite.flags & 0x80 == 0x80;
             let tile_y = if flip_y {
                 7 - (line - sprite.y)
             } else {

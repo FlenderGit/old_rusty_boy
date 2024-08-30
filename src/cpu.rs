@@ -1,5 +1,3 @@
-use log::info;
-
 use crate::{memory::Memory, registers::{Flag, Registers}};
 
 pub struct CPU {
