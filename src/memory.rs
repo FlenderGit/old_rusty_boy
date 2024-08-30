@@ -130,11 +130,11 @@ impl Memory {
         (self.read(address) as u16) | ((self.read(address + 1) as u16) << 8)
     }
 
-    pub fn step(&mut self, cycles: u8, draw: bool) {
+    pub fn step(&mut self, cycles: u8) {
         self.interrupt_flags |= self.keypad.interrupt;
         self.keypad.interrupt = 0;
 
-        self.gpu.step(cycles, draw);
+        self.gpu.step(cycles);
         self.interrupt_flags |= self.gpu.interrupt;
         self.gpu.interrupt = 0;
 

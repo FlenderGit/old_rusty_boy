@@ -38,21 +38,14 @@ impl CPU {
         value
     }
 
-    pub fn step_debug(&mut self) {
-        let pc = self.registers.pc;
-        let opcode = self.read_byte(pc);
-        info!("PC: {:#06x}, Opcode: {:#04x}", pc, opcode);
-        self.step(true);
-    }
-
-    pub fn step(&mut self, draw: bool) -> u8 {
+    pub fn step(&mut self) -> u8 {
 
         if self.ime {
             self.handle_interrupts();
         }
 
         let ticks = self.call();
-        self.memory.step(ticks, draw);
+        self.memory.step(ticks);
         //self.memory.gpu.step(ticks, draw);
         ticks
     }

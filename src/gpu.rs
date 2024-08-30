@@ -42,7 +42,7 @@ pub struct GPU {
     wx: u8,   // 0xff4b WX -- Window X Position
     pub vram_bank: u8,
 
-    pub screen_data: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
+    screen_data: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
 }
 
 impl GPU {
@@ -70,7 +70,7 @@ impl GPU {
         }
     }
 
-    pub fn step(&mut self, cycles: u8, draw: bool) {
+    pub fn step(&mut self, cycles: u8) {
         self.clock += cycles as u32;
 
         match self.mode {
@@ -111,9 +111,6 @@ impl GPU {
                     self.clock -= 172;
                     self.mode = Mode::HBlank;
                     self.render_scanline();
-                    if draw {
-                        self.print_line();
-                    }
                 }
             }
         }
@@ -137,6 +134,11 @@ impl GPU {
     pub fn render_scanline(&mut self) {
         self.draw_tiles();
         self.draw_sprites();
+    }
+
+    #[inline(always)]
+    pub fn screen_data(&self) -> &[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3] {
+        &self.screen_data
     }
 
     pub fn draw_tiles(&mut self) {
@@ -198,7 +200,6 @@ impl GPU {
             };
 
             self.set_color(x, color);
-            //self.screen_data[(self.ly as usize * SCREEN_WIDTH + x) as usize] = color;
         }
     }
 
@@ -268,30 +269,15 @@ impl GPU {
     }
 
     pub fn set_color(&mut self, x: usize, color: u8) {
-
         let index = self.ly as usize * SCREEN_WIDTH * 3 + x * 3;
-        if index >= SCREEN_HEIGHT * SCREEN_WIDTH * 3 {
-            panic!("Index out of bounds: {}, x: {}, ly: {}", index, x, self.ly);
-        }
-
+        assert!(color < 4);
+        assert!(index < SCREEN_HEIGHT * SCREEN_WIDTH * 3);
         self.screen_data[index] = color;
         self.screen_data[index + 1] = color;
         self.screen_data[index + 2] = color;
     }
 
-    fn print_line(&self) {
-        for x in 0..SCREEN_WIDTH {
-            match self.screen_data[self.ly as usize * SCREEN_WIDTH * 3 + x * 3] {
-                3 => print!("  "),
-                2 => print!("░░"),
-                1 => print!("▒▒"),
-                0 => print!("▓▓"),
-                _ => print!(" "),
-            }
-        }
-        println!();
-    }
-
+    #[inline(always)]
     pub fn read_vram(&self, address: u16) -> u8 {
         self.vram[address as usize & 0x1FFF]
     }
@@ -302,6 +288,7 @@ impl GPU {
         }
     }
 
+    #[inline(always)]
     pub fn read_oam(&self, address: u16) -> u8 {
         self.oam[address as usize]
     }
@@ -326,10 +313,12 @@ impl GPU {
         }
     }
 
+    #[inline(always)]
     pub fn write_vram(&mut self, address: u16, value: u8) {
         self.vram[address as usize] = value;
     }
 
+    #[inline(always)]
     pub fn write_oam(&mut self, address: u16, value: u8) {
         self.oam[address as usize] = value;
     }

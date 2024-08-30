@@ -51,7 +51,7 @@ impl Gameboy {
     }
 
     pub fn get_screen_data(&self) -> &[u8; 160 * 144 * 3] {
-        return &self.cpu.memory.gpu.screen_data;
+        return self.cpu.memory.gpu.screen_data();
     }
 
     pub fn set_render_callback<F>(&mut self, callback: F)
@@ -138,12 +138,12 @@ impl Gameboy {
         }
 
         while cycles < CYCLES_PER_FRAME {
-            cycles += self.cpu.step(false) as u32;
+            cycles += self.cpu.step() as u32;
         }
     }
 
     fn render(&mut self) {
-        (self.render_callback)(&self.cpu.memory.gpu.screen_data);
+        (self.render_callback)(self.cpu.memory.gpu.screen_data());
     }
 
     pub fn run_debug(&mut self) {
@@ -153,11 +153,11 @@ impl Gameboy {
         // 2CF --> CFFB est remis (64D3)
 
         while self.cpu.registers.pc != 0x6a6b {
-            self.cpu.step(false);
+            self.cpu.step();
         }
 
         while self.cpu.registers.pc != 0xffb8 {
-            self.cpu.step(false);
+            self.cpu.step();
         }
         /* for _ in 0..160_000_000 {
             self.cpu.step(false);
@@ -172,11 +172,7 @@ impl Gameboy {
 
 
         for _ in 0..19_000_000 {
-            self.cpu.step(false);
-        }
-
-        for _ in 0..1 {
-            self.cpu.step_debug();
+            self.cpu.step();
         }
 
         println!("Registers: {:?}", self.cpu.registers);
