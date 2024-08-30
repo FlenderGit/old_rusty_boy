@@ -580,6 +580,7 @@ impl CPU {
         }
     }
 
+    #[inline(always)]
     fn reg_inc(&mut self, value: u8) -> u8 {
         let result = value.wrapping_add(1);
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -588,6 +589,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn reg_dec(&mut self, value: u8) -> u8 {
         let result = value.wrapping_sub(1);
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -596,6 +598,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn add(&mut self, value: u8, need_carry: bool) {
         let carry = (need_carry && self.registers.get_flag(Flag::Carry)) as u8;
         let a = self.registers.a;
@@ -607,6 +610,7 @@ impl CPU {
         self.registers.a = result;
     }
 
+    #[inline(always)]
     fn sub(&mut self, value: u8, need_carry: bool) {
         let carry = (need_carry && self.registers.get_flag(Flag::Carry)) as u8;
         let a = self.registers.a;
@@ -618,6 +622,7 @@ impl CPU {
         self.registers.a = result;
     }
 
+    #[inline(always)]
     fn and(&mut self, value: u8) {
         let result = self.registers.a & value;
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -627,6 +632,7 @@ impl CPU {
         self.registers.a = result;
     }
 
+    #[inline(always)]
     fn xor(&mut self, value: u8) {
         let result = self.registers.a ^ value;
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -636,6 +642,7 @@ impl CPU {
         self.registers.a = result;
     }
 
+    #[inline(always)]
     fn or(&mut self, value: u8) {
         let result = self.registers.a | value;
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -645,6 +652,7 @@ impl CPU {
         self.registers.a = result;
     }
 
+    #[inline(always)]
     fn cp(&mut self, value: u8) {
         let a = self.registers.a;
         let result = a.wrapping_sub(value);
@@ -654,6 +662,7 @@ impl CPU {
         self.registers.set_flag(Flag::Carry, a < value);
     }
 
+    #[inline(always)]
     fn rlc(&mut self, value: u8) -> u8 {
         let carry = value >> 7;
         let result = (value << 1) | carry;
@@ -664,6 +673,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn rrc(&mut self, value: u8) -> u8 {
         let carry = value & 1;
         let result = (value >> 1) | (carry << 7);
@@ -673,7 +683,8 @@ impl CPU {
         self.registers.set_flag(Flag::Carry, carry == 1);
         result
     }
-
+    
+    #[inline(always)]
     fn rl(&mut self, value: u8) -> u8 {
         let carry = self.registers.get_flag(Flag::Carry) as u8;
         let result = (value << 1) | carry;
@@ -684,6 +695,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn rr(&mut self, value: u8) -> u8 {
         let carry = self.registers.get_flag(Flag::Carry) as u8;
         let result = (value >> 1) | (carry << 7);
@@ -694,6 +706,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn sla(&mut self, value: u8) -> u8 {
         let result = value << 1;
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -703,6 +716,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn sra(&mut self, value: u8) -> u8 {
         let result = (value >> 1) | (value & 0x80);
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -712,6 +726,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn swap(&mut self, value: u8) -> u8 {
         let result = (value >> 4) | (value << 4);
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -721,6 +736,7 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn srl(&mut self, value: u8) -> u8 {
         let result = value >> 1;
         self.registers.set_flag(Flag::Zero, result == 0);
@@ -730,12 +746,14 @@ impl CPU {
         result
     }
 
+    #[inline(always)]
     fn bit(&mut self, value: u8, bit: u8) {
         self.registers.set_flag(Flag::Zero, value & (1 << bit) == 0);
         self.registers.set_flag(Flag::Sub, false);
         self.registers.set_flag(Flag::HalfCarry, true);
     }
 
+    #[inline(always)]
     fn daa(&mut self) {
         let mut a = self.registers.a;
         let mut adjust = 0;
@@ -756,25 +774,30 @@ impl CPU {
         self.registers.a = a;
     }
 
+    #[inline(always)]
     fn res(&mut self, value: u8, bit: u8) -> u8 {
         value & !(1 << bit)
     }
 
+    #[inline(always)]
     fn set(&mut self, value: u8, bit: u8) -> u8 {
         value | (1 << bit)
     }
 
+    #[inline(always)]
     fn push_stack(&mut self, value: u16) {
         self.registers.sp = self.registers.sp.wrapping_sub(2);
         self.memory.write_word(self.registers.sp, value);
     }
 
+    #[inline(always)]
     fn pop_stack(&mut self) -> u16 {
         let value = self.memory.read_word(self.registers.sp);
         self.registers.sp = self.registers.sp.wrapping_add(2);
         value
     }
 
+    #[inline(always)]
     fn add_hl(&mut self, value: u16) {
         let hl = self.registers.hl();
         let result = hl.wrapping_add(value);
@@ -784,6 +807,7 @@ impl CPU {
         self.registers.set_hl(result);
     }
 
+    #[inline(always)]
     fn jr(&mut self) {
         let offset = self.fetch_byte() as i8 as u16;
         self.registers.pc = self.registers.pc.wrapping_add(offset);

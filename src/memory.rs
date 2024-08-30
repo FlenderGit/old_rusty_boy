@@ -76,7 +76,7 @@ impl Memory {
     pub fn write(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x7FFF => {
-                panic!("Attempted to write to ROM at address: {:#06x}", address);
+                warn!("Attempted to write to ROM at address: {:#06x}", address);
             } // Rom
             0x8000..=0x9FFF => self.gpu.write_vram(address - 0x8000, value), // VRAM
             0xA000..=0xBFFF => (),                                           // External RAM
@@ -103,7 +103,7 @@ impl Memory {
             0xff80..=0xfffe => self.hram[address as usize & HRAM_SIZE] = value, // High RAM
             0xffff => self.interrupt_enable = value,           // Interrupt Enable
             _ => {
-                panic!("Unimplemented memory write at address: {:#06x}", address);
+                warn!("Unimplemented memory write at address: {:#06x}", address);
             }
         }
     }
@@ -151,8 +151,6 @@ mod tests {
     /**
      * Tests about memory read and write basic operations
      */
-    
-    // Should panic if write to ROM
     #[test]
     fn test_memory_read_write() {
         let mut memory = Memory::new();
@@ -180,10 +178,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_memory_write_rom() {
         let mut memory = Memory::new();
         memory.write(0x0000, 0x12);
+        assert_ne!(memory.rom[0x0000], 0x12);
     }
 
     #[test]
