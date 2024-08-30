@@ -1,3 +1,5 @@
+use crate::gameboy::GBMode;
+
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 
@@ -45,6 +47,7 @@ pub struct GPU {
     pub vram_bank: u8,
 
     screen_data: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
+    gb_mode: GBMode,
 }
 
 impl GPU {
@@ -69,6 +72,7 @@ impl GPU {
             wy: 0,
             wx: 0,
             screen_data: [0; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
+            gb_mode: GBMode::DMG,
         }
     }
 
@@ -175,11 +179,8 @@ impl GPU {
                 )
             };
 
-            //info!("tilemap_addr: {:#06x}, tile_y: {:#06x}, tile_x: {:#06x}, pixel_y: {:#06x}, pixel_x: {:#06x}", tilemap_addr, tile_y, tile_x, pixel_y, pixel_x);
             let tile_addr = tilemap_addr + tile_y as u16 * 32 + tile_x as u16;
-            //info!("tile_addr: {:#06x}", tile_addr);
             let tile_num = self.read_vram(tile_addr) as u16;
-            //info!("tile_num: {:#06x}", tile_num);
 
             let tile_data_addr = if tilemap_addr == 0x9800 {
                 0x8000 + tile_num * 16
@@ -190,18 +191,26 @@ impl GPU {
             let low_byte = self.read_vram(tile_data_addr + pixel_y as u16 * 2);
             let high_byte = self.read_vram(tile_data_addr + pixel_y as u16 * 2 + 1);
 
-            let color_bit = 7 - pixel_x;
+            let color_bit = if true { 7 - pixel_x } else { pixel_x };
             let color_id = ((high_byte >> color_bit) & 0x1) << 1 | ((low_byte >> color_bit) & 0x1);
 
-            let color = match color_id {
-                0 => self.bgp & 0x03,
-                1 => (self.bgp >> 2) & 0x03,
-                2 => (self.bgp >> 4) & 0x03,
-                3 => (self.bgp >> 6) & 0x03,
-                _ => 0,
-            };
+            if self.gb_mode == GBMode::CGB {
+                let color = 0x00; // TD
+                self.set_color(x, color);
+            } else {
+                let color = self.get_monochrome_color(color_id, self.bgp);
+                self.set_color(x, color);
+            }
+        }
+    }
 
-            self.set_color(x, color);
+    fn get_monochrome_color(&self, color_id: u8, palette: u8) -> u8 {
+        match color_id {
+            0 => palette & 0x03,
+            1 => (palette >> 2) & 0x03,
+            2 => (palette >> 4) & 0x03,
+            3 => (palette >> 6) & 0x03,
+            _ => 0,
         }
     }
 

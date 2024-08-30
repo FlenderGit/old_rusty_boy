@@ -4,10 +4,16 @@ use crate::header::Header;
 use crate::keypad::KeyEvent;
 use crate::time;
 
-const FRAME_TIME: f64 = 1.0 / 30.0;
+const FRAME_TIME: f64 = 1.0 / 60.0;
 const CYCLES_PER_SECOND: u32 = 4_194_304;
 const CYCLES_PER_FRAME: u32 = CYCLES_PER_SECOND / 60;
 
+#[derive(PartialEq)]
+pub enum GBMode {
+    DMG,
+    CGB,
+}
+ 
 pub struct Gameboy {
     pub cpu: CPU,
     header: Option<Header>,
@@ -135,6 +141,16 @@ impl Gameboy {
         let elapsed = current_time - self.previous_time;
         self.previous_time = current_time;
         self.lag += elapsed;
+
+        // Call the input callback to get the input from the user
+        if let Some(key) = (self.input_callback)() {
+            match key {
+                KeyEvent::Press(key)    => { self.cpu.memory.keypad.press(key); }
+                KeyEvent::Release(key)  => { self.cpu.memory.keypad.release(key); }
+            }
+        }
+
+
         let mut cycles = 0;
         while self.lag >= FRAME_TIME {
             self.update();
@@ -185,14 +201,6 @@ impl Gameboy {
     /// Update the game state
     /// This function will update the game state by running the CPU for a fixed number of cycles
     fn update(&mut self) {
-
-        // Call the input callback to get the input from the user
-        if let Some(key) = (self.input_callback)() {
-            match key {
-                KeyEvent::Press(key)    => { self.cpu.memory.keypad.press(key); }
-                KeyEvent::Release(key)  => { self.cpu.memory.keypad.release(key); }
-            }
-        }
 
         // Execute the CPU for a fixed number of cycles
         let mut cycles = 0;

@@ -6,6 +6,7 @@ pub struct Timer {
     active: bool,           // TAC (2)
     timer_clock: u8,
     pub interrupt: u8,
+    internal_clock: u8,
 }
 
 impl Timer {
@@ -16,8 +17,10 @@ impl Timer {
             tma: 0,
             
             active: false,
-            timer_clock: 0,
+            timer_clock: 64,
             interrupt: 0,
+
+            internal_clock: 0,
         }
     }
 
@@ -62,7 +65,13 @@ impl Timer {
 
     pub fn step(&mut self, cycles: u8) {
         
-        self.div = self.div.wrapping_add(cycles);
+        self.internal_clock += cycles;
+
+        while self.internal_clock >= self.timer_clock {
+            self.div = self.div.wrapping_add(1);
+            self.internal_clock -= self.timer_clock;
+        }
+
         if !self.active { return; }
 
         let old_tima = self.tima;
