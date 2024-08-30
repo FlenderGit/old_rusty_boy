@@ -4,6 +4,8 @@ const SCREEN_HEIGHT: usize = 144;
 const VRAM_SIZE: usize = 0x2000;
 const OAM_SIZE: usize = 0xA0;
 
+pub const SCREEN_SIZE_RGB: usize = SCREEN_WIDTH * SCREEN_HEIGHT * 3;
+
 #[derive(PartialEq)]
 enum Mode {
     HBlank, // 204 cycles : termine le rendu d'une ligne horizontale et attend la prochaine ligne à dessiner

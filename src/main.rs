@@ -5,7 +5,7 @@ fn main() {
     env_logger::init();
 
     let mut game = Gameboy::new();
-    game.load_rom(std::fs::read("roms/tetris.gb").unwrap());
+    game.load_rom(&std::fs::read("roms/tetris.gb").unwrap());
     game.set_render_callback(|screen_data| {
         for y in 0..144 {
             for x in 0..160 {
