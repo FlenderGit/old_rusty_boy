@@ -7,8 +7,6 @@ edition = "2021"
 opt-level = 3
 
 [dependencies]
-env_logger = { version = "0.11.5" }
-log = { version = "0.4.22"}
 web-sys = { version = "0.3.70", features = ["Window", "Performance"] , optional = true }
 wasm-bindgen = { version = "0.2.93", optional = true }
 
