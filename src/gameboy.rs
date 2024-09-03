@@ -2,7 +2,7 @@ use crate::cpu::CPU;
 use crate::gpu::SCREEN_SIZE_RGB;
 use crate::header::Header;
 use crate::keypad::KeyEvent;
-use crate::time;
+use crate::{mbc, time};
 
 const FRAME_TIME: f64 = 1.0 / 60.0;
 const CYCLES_PER_SECOND: u32 = 4_194_304;
@@ -16,7 +16,7 @@ pub enum GBMode {
  
 pub struct Gameboy {
     pub cpu: CPU,
-    header: Option<Header>,
+    header: Header,
     
     render_callback: Box<dyn FnMut(&[u8; 160 * 144 * 3]) + 'static>,
     input_callback: Box<dyn FnMut() -> Option<KeyEvent> + 'static>,
@@ -26,10 +26,14 @@ pub struct Gameboy {
 }
 
 impl Gameboy {
-    pub fn new() -> Gameboy {
+    pub fn new(rom: &Vec<u8>) -> Gameboy {
+
+        let header = Header::load_rom(&rom);
+        let mbc = crate::mbc::from_rom(&rom);
+
         Gameboy {
-            cpu: CPU::new(),
-            header: None,
+            cpu: CPU::new(mbc),
+            header,
 
             render_callback: Box::new(|_| { panic!("No render callback set!"); }),
             input_callback: Box::new(|| { panic!("No input callback set!"); }),
@@ -39,52 +43,11 @@ impl Gameboy {
         }
     }
 
-    /// Load a ROM from the given filename
-    /// The ROM is loaded from the file system and then loaded into the Gameboy memory
-    /// This function will panic if the file is not found
-    /// 
-    /// # Arguments
-    /// * `filename` - A string slice that holds the filename of the ROM to load
-    /// 
-    /// # Example
-    /// ```
-    /// use rusty_boy::gameboy::Gameboy;
-    /// let mut game = Gameboy::new();
-    /// game.load_rom_from_filename("roms/tetris.gb");
-    /// ```
-    pub fn load_rom_from_filename(&mut self, filename: &'static str ) {
-
-        if !std::path::Path::new(&filename).exists() {
-            panic!("File not found: {}", filename);
-        }
-
-        let rom = std::fs::read(filename).unwrap();
-        self.load_rom(&rom);
+    pub fn new_from_file(file: &str) -> Gameboy {
+        let rom = std::fs::read(file).unwrap();
+        Gameboy::new(&rom)
     }
 
-    /// Load a ROM from a vector of bytes
-    /// The ROM is loaded into the Gameboy memory
-    /// The ROM must be at least 0x8000 bytes long - the minimum size for a Gameboy ROM. Other tests will be done after to veriy if the size provided in the ROMs' header is correct.
-    /// 
-    /// # Arguments
-    /// * `rom` - A vector of bytes that holds the ROM to load.
-    /// 
-    /// # Example
-    /// ```
-    /// use rusty_boy::gameboy::Gameboy;
-    /// let mut game = Gameboy::new();
-    /// let rom = std::fs::read("roms/tetris.gb").unwrap();
-    /// game.load_rom(&rom);
-    /// ```
-    pub fn load_rom(&mut self, rom: &Vec<u8>) {
-        
-        if rom.len() < 0x8000 {
-            panic!("ROM is too small. Minimum size is 0x8000 bytes.");
-        }
-
-        self.cpu.memory.load_rom(&rom);
-        self.header = Some(Header::load_rom(&rom));
-    }
 
     /// Get the screen data
     pub fn get_screen_data(&self) -> &[u8; SCREEN_SIZE_RGB] {
@@ -175,6 +138,7 @@ impl Gameboy {
                     FRAME_TIME - frame_duration,
                 ));
             }
+
         }
     }
 
@@ -223,16 +187,44 @@ impl Gameboy {
         // 650C
         // 2CF --> CFFB est remis (64D3)
 
-        while self.cpu.registers.pc != 0x6a6b {
+        // 0x5b7 --> 0x3c5
+
+        // List of 10 last opcodes
+        let mut last_addr = [0u16; 5_000];
+
+        //while self.cpu.registers.pc != 0x01 {
+        let mut c = 0;
+        while true {
+            self.cpu.step();
+            if self.cpu.registers.pc == 0x2892 && self.cpu.registers.hl() == 0x6f94 {
+                c += 1;
+                if c == 982 {
+                    break;
+                }
+            }
+        }
+
+        //0x40e --> load scx into a
+        //0x7b9e --> increment 0xC103
+        while true {
             self.cpu.step();
         }
 
-        while self.cpu.registers.pc != 0xffb8 {
-            self.cpu.step();
+        for _ in 0..100 {
+            self.cpu.step_debug();
         }
-        /* for _ in 0..160_000_000 {
-            self.cpu.step(false);
-        } */
+
+        println!("Registers: {:?}", self.cpu.registers);
+        println!("0xC103: {:#04x}", self.cpu.memory.read(0xC103));
+        
+        /* let mut str_buffer = String::new();
+        for addr in last_addr.iter() {
+            let s = format!("0x{:04x} :: ", addr);
+            str_buffer.push_str(&s);
+        }
+        println!("{}", str_buffer); */
+        println!("ROM: {:?}", self.cpu.memory.mbc.info());
+
         /* for _ in 0..1_000 {
             self.cpu.step(false);
             for _ in 0..500_000 {
@@ -241,10 +233,6 @@ impl Gameboy {
             //println!("Registers: {:?}", self.cpu.registers);
         } */
 
-
-        for _ in 0..19_000_000 {
-            self.cpu.step();
-        }
 
         println!("Registers: {:?}", self.cpu.registers);
         println!("0x9820: {:#04x}", self.cpu.memory.read(0x9820));
@@ -257,10 +245,6 @@ impl Gameboy {
     /// Get the header of the loaded ROM
     /// This function will return the header of the loaded ROM or panic if no ROM is loaded
     pub fn header(&self) -> &Header {
-        if let Some(header) = &self.header {
-            return header;
-        } else {
-            panic!("No header find. Please load a ROM first.");
-        }
+        &self.header
     }
 }
