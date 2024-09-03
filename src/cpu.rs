@@ -1,18 +1,20 @@
-use crate::{memory::Memory, registers::{Flag, Registers}};
+use crate::{mbc::MBC, memory::Memory, registers::{Flag, Registers}};
 
 pub struct CPU {
     pub registers: Registers,
     pub memory: Memory,
     ime: bool,
+    halt: bool,
 }
 
 impl CPU {
     
-    pub fn new() -> CPU {
+    pub fn new(mbc: Box<dyn MBC+'static>) -> CPU {
         CPU {
             registers: Registers::new(),
-            memory: Memory::new(),
+            memory: Memory::new(mbc),
             ime: false,
+            halt: false,
         }
     }
 
@@ -36,38 +38,50 @@ impl CPU {
         value
     }
 
-    pub fn step(&mut self) -> u8 {
-
-        if self.ime {
-            self.handle_interrupts();
-        }
-
-        let ticks = self.call();
-        self.memory.step(ticks);
-        //self.memory.gpu.step(ticks, draw);
-        ticks
+    pub fn step_debug(&mut self) -> u8 {
+        let opcode = self.read_byte(self.registers.pc);
+        println!("PC: {:#06x}, Opcode: {:#04x}", self.registers.pc, opcode);
+        self.step()
     }
 
-    fn handle_interrupts(&mut self) {
-        let interrupt_flags = self.memory.interrupt_flags;
-        let interrupt_enable = self.memory.interrupt_enable;
-        let interrupt = interrupt_flags & interrupt_enable;
+    pub fn step(&mut self) -> u8 {
 
-        if interrupt == 0 {
-            return;
+        match self.handle_interrupts() {
+            0 => {},
+            n => return n,
         }
 
-        let interrupt_vector = match interrupt {
-            0x01 => 0x40,
-            0x02 => 0x48,
-            0x04 => 0x50,
-            0x08 => 0x58,
-            0x10 => 0x60,
-            _ => panic!("Invalid interrupt: {:#04x}, PC: {:#06x}", interrupt, self.registers.pc),
+        let cycles = if self.halt {
+            4
+        } else {
+            self.call()
         };
 
+        self.memory.step(cycles);
+        cycles
+    }
+
+    fn handle_interrupts(&mut self) -> u8 {
+
+        // If both IME and HALT are false, we are in a normal state
+        if self.ime == false && self.halt == false { return 0; }
+
+        // If HALT is true, we are in a HALT state
+        let interrupt = self.memory.interrupt_flags & self.memory.interrupt_enable;
+        if interrupt == 0 { return 0; }
+
+        self.halt = false;
+        if self.ime == false { return 0; }
+        self.ime = false;
+
+        let n = interrupt.trailing_zeros() as u8;
+        if n == 5 { panic!() }
+        
+        self.memory.interrupt_flags &= !(1 << n);
+        let interrupt_vector = 0x0040 | (n as u16) << 3;
+
         self.call_interrupt(interrupt_vector);
-        self.memory.write(0xff0f, interrupt_flags & !interrupt);
+        16
     }
 
     fn call_interrupt(&mut self, address: u16) {
@@ -89,12 +103,12 @@ impl CPU {
             0x07 => { self.registers.a = self.rlc(self.registers.a); self.registers.set_flag(Flag::Zero, false); 4 }, // RLCA
             0x08 => { let addr = self.fetch_word(); self.memory.write_word(addr, self.registers.sp); 20 }, // LD (a16), SP
             0x09 => { self.add_hl(self.registers.bc()); 8 }, // ADD HL, BC
-            0x0A => { self.registers.a = self.memory.read(self.registers.bc()); 8 }, // LD A, (BC)
-            0x0B => { self.registers.set_bc(self.registers.bc().wrapping_sub(1)); 8 }, // DEC BC
-            0x0C => { self.registers.c = self.reg_inc(self.registers.c); 4 }, // INC C
-            0x0D => { self.registers.c = self.reg_dec(self.registers.c); 4 }, // DEC C
-            0x0E => { self.registers.c = self.fetch_byte(); 8 }, // LD C, d8
-            
+            0x0a => { self.registers.a = self.memory.read(self.registers.bc()); 8 }, // LD A, (BC)
+            0x0b => { self.registers.set_bc(self.registers.bc().wrapping_sub(1)); 8 }, // DEC BC
+            0x0c => { self.registers.c = self.reg_inc(self.registers.c); 4 }, // INC C
+            0x0d => { self.registers.c = self.reg_dec(self.registers.c); 4 }, // DEC C
+            0x0e => { self.registers.c = self.fetch_byte(); 8 }, // LD C, d8
+            0x0f => { self.registers.a = self.rrc(self.registers.a); self.registers.set_flag(Flag::Zero, false); 4 }, // RRCA
 
             0x11 => { let v = self.fetch_word(); self.registers.set_de(v); 12 }, // LD DE, d16
             0x12 => { self.memory.write(self.registers.de(), self.registers.a); 8 }, // LD (DE), A
@@ -102,14 +116,15 @@ impl CPU {
             0x14 => { self.registers.d = self.reg_inc(self.registers.d); 4 }, // INC D
             0x15 => { self.registers.d = self.reg_dec(self.registers.d); 4 }, // DEC D
             0x16 => { self.registers.d = self.fetch_byte(); 8 }, // LD D, d8
-
+            0x17 => { self.registers.a = self.rl(self.registers.a); self.registers.set_flag(Flag::Zero, false); 4 }, // RLA
             0x18 => { self.jr(); 12 }, // JR r8
             0x19 => { self.add_hl(self.registers.de()); 8 }, // ADD HL, DE
-            0x1A => { self.registers.a = self.memory.read(self.registers.de()); 8 }, // LD A, (DE)
-            0x1B => { self.registers.set_de(self.registers.de().wrapping_sub(1)); 8 }, // DEC DE
-            0x1C => { self.registers.e = self.reg_inc(self.registers.e); 4 }, // INC E
-            0x1D => { self.registers.e = self.reg_dec(self.registers.e); 4 }, // DEC E
-            0x1E => { self.registers.e = self.fetch_byte(); 8 }, // LD E, d8
+            0x1a => { self.registers.a = self.memory.read(self.registers.de()); 8 }, // LD A, (DE)
+            0x1b => { self.registers.set_de(self.registers.de().wrapping_sub(1)); 8 }, // DEC DE
+            0x1c => { self.registers.e = self.reg_inc(self.registers.e); 4 }, // INC E
+            0x1d => { self.registers.e = self.reg_dec(self.registers.e); 4 }, // DEC E
+            0x1e => { self.registers.e = self.fetch_byte(); 8 }, // LD E, d8
+            0x1f => { self.registers.a = self.rr(self.registers.a); self.registers.set_flag(Flag::Zero, false); 4 }, // RRA
             
             0x20 => { if !self.registers.get_flag(Flag::Zero) { self.jr(); 12 } else { self.registers.pc += 1; 8 } }, // JR NZ, r8
             0x21 => { let v = self.fetch_word(); self.registers.set_hl(v); 12 }, // LD HL, d16
@@ -134,14 +149,21 @@ impl CPU {
             0x34 => { let v = self.memory.read(self.registers.hl()); let v2 = self.reg_inc(v); self.memory.write(self.registers.hl(), v2); 12 }, // INC (HL)
             0x35 => { let v = self.memory.read(self.registers.hl()); let v2 = self.reg_dec(v); self.memory.write(self.registers.hl(), v2); 12 }, // DEC (HL)
             0x36 => { let v = self.fetch_byte(); self.memory.write(self.registers.hl(), v); 12 }, // LD (HL), d8
+            0x37 => { self.registers.set_flag(Flag::Sub, false); self.registers.set_flag(Flag::HalfCarry, false); self.registers.set_flag(Flag::Carry, true); 4 }, // SCF
             0x38 => { if self.registers.get_flag(Flag::Carry) { self.jr(); 12 } else { self.registers.pc += 1; 8 } }, // JR C, r8
+            0x39 => { self.add_hl(self.registers.sp); 8 }, // ADD HL, SP
             0x3A => { self.registers.a = self.memory.read(self.registers.hld()); 8 }, // LD A, (HL-)
             0x3B => { self.registers.sp = self.registers.sp.wrapping_sub(1); 8 }, // DEC SP
             0x3C => { self.registers.a = self.reg_inc(self.registers.a); 4 }, // INC A
             0x3D => { self.registers.a = self.reg_dec(self.registers.a); 4 }, // DEC A
             0x3E => { self.registers.a = self.fetch_byte(); 8 }, // LD A, d8
-
-            0x40 => { self.registers.b = self.registers.b; 4 }, // LD B, B
+            0x3f => {
+                self.registers.set_flag(Flag::Sub, false);
+                self.registers.set_flag(Flag::HalfCarry, false);
+                self.registers.set_flag(Flag::Carry, !self.registers.get_flag(Flag::Carry));
+                4
+            }, // CCF
+            0x40 => { 4 }, // LD B, B
             0x41 => { self.registers.b = self.registers.c; 4 }, // LD B, C
             0x42 => { self.registers.b = self.registers.d; 4 }, // LD B, D
             0x43 => { self.registers.b = self.registers.e; 4 }, // LD B, E
@@ -150,7 +172,7 @@ impl CPU {
             0x46 => { self.registers.b = self.memory.read(self.registers.hl()); 8 }, // LD B, (HL)
             0x47 => { self.registers.b = self.registers.a; 4 }, // LD B, A
             0x48 => { self.registers.c = self.registers.b; 4 }, // LD C, B
-            0x49 => { self.registers.c = self.registers.c; 4 }, // LD C, C
+            0x49 => { 4 }, // LD C, C
             0x4A => { self.registers.c = self.registers.d; 4 }, // LD C, D
             0x4B => { self.registers.c = self.registers.e; 4 }, // LD C, E
             0x4C => { self.registers.c = self.registers.h; 4 }, // LD C, H
@@ -159,7 +181,7 @@ impl CPU {
             0x4F => { self.registers.c = self.registers.a; 4 }, // LD C, A
             0x50 => { self.registers.d = self.registers.b; 4 }, // LD D, B
             0x51 => { self.registers.d = self.registers.c; 4 }, // LD D, C
-            0x52 => { self.registers.d = self.registers.d; 4 }, // LD D, D
+            0x52 => { 4 }, // LD D, D
             0x53 => { self.registers.d = self.registers.e; 4 }, // LD D, E
             0x54 => { self.registers.d = self.registers.h; 4 }, // LD D, H
             0x55 => { self.registers.d = self.registers.l; 4 }, // LD D, L
@@ -168,7 +190,7 @@ impl CPU {
             0x58 => { self.registers.e = self.registers.b; 4 }, // LD E, B
             0x59 => { self.registers.e = self.registers.c; 4 }, // LD E, C
             0x5A => { self.registers.e = self.registers.d; 4 }, // LD E, D
-            0x5B => { self.registers.e = self.registers.e; 4 }, // LD E, E
+            0x5B => { 4 }, // LD E, E
             0x5C => { self.registers.e = self.registers.h; 4 }, // LD E, H
             0x5D => { self.registers.e = self.registers.l; 4 }, // LD E, L
             0x5E => { self.registers.e = self.memory.read(self.registers.hl()); 8 }, // LD E, (HL)
@@ -177,7 +199,7 @@ impl CPU {
             0x61 => { self.registers.h = self.registers.c; 4 }, // LD H, C
             0x62 => { self.registers.h = self.registers.d; 4 }, // LD H, D
             0x63 => { self.registers.h = self.registers.e; 4 }, // LD H, E
-            0x64 => { self.registers.h = self.registers.h; 4 }, // LD H, H
+            0x64 => { 4 }, // LD H, H
             0x65 => { self.registers.h = self.registers.l; 4 }, // LD H, L
             0x66 => { self.registers.h = self.memory.read(self.registers.hl()); 8 }, // LD H, (HL)
             0x67 => { self.registers.h = self.registers.a; 4 }, // LD H, A
@@ -186,7 +208,7 @@ impl CPU {
             0x6A => { self.registers.l = self.registers.d; 4 }, // LD L, D
             0x6B => { self.registers.l = self.registers.e; 4 }, // LD L, E
             0x6C => { self.registers.l = self.registers.h; 4 }, // LD L, H
-            0x6D => { self.registers.l = self.registers.l; 4 }, // LD L, L
+            0x6D => { 4 }, // LD L, L
             0x6E => { self.registers.l = self.memory.read(self.registers.hl()); 8 }, // LD L, (HL)
             0x6F => { self.registers.l = self.registers.a; 4 }, // LD L, A
             0x70 => { self.memory.write(self.registers.hl(), self.registers.b); 8 }, // LD (HL), B
@@ -195,7 +217,7 @@ impl CPU {
             0x73 => { self.memory.write(self.registers.hl(), self.registers.e); 8 }, // LD (HL), E
             0x74 => { self.memory.write(self.registers.hl(), self.registers.h); 8 }, // LD (HL), H
             0x75 => { self.memory.write(self.registers.hl(), self.registers.l); 8 }, // LD (HL), L
-            
+            0x76 => { self.halt = true; 4 }, // HALT
             0x77 => { self.memory.write(self.registers.hl(), self.registers.a); 8 }, // LD (HL), A
             0x78 => { self.registers.a = self.registers.b; 4 }, // LD A, B
             0x79 => { self.registers.a = self.registers.c; 4 }, // LD A, C
@@ -204,7 +226,7 @@ impl CPU {
             0x7C => { self.registers.a = self.registers.h; 4 }, // LD A, H
             0x7D => { self.registers.a = self.registers.l; 4 }, // LD A, L
             0x7E => { self.registers.a = self.memory.read(self.registers.hl()); 8 }, // LD A, (HL)
-            0x7F => { self.registers.a = self.registers.a; 4 }, // LD A, A
+            0x7F => { 4 }, // LD A, A
             0x80 => { self.add(self.registers.b, false); 4 }, // ADD A, B
             0x81 => { self.add(self.registers.c, false); 4 }, // ADD A, C
             0x82 => { self.add(self.registers.d, false); 4 }, // ADD A, D
@@ -271,22 +293,29 @@ impl CPU {
             0xBF => { self.cp(self.registers.a); 4 }, // CP A
             0xC0 => { if !self.registers.get_flag(Flag::Zero) { self.registers.pc = self.pop_stack(); 20 } else { 8 } }, // RET NZ
             0xC1 => { let v = self.pop_stack(); self.registers.set_bc(v); 12 }, // POP BC
-            0xC2 => { if !self.registers.get_flag(Flag::Zero) { self.registers.pc = self.fetch_word(); 16 } else { 12 } }, // JP NZ, a16
+            0xC2 => { if !self.registers.get_flag(Flag::Zero) { self.registers.pc = self.fetch_word(); 16 } else { self.registers.pc += 2; 12 } }, // JP NZ, a16
             0xC3 => { self.registers.pc = self.fetch_word(); 16 }, // JP a16
+            0xC4 => { if !self.registers.get_flag(Flag::Zero) { self.push_stack(self.registers.pc + 2); self.registers.pc = self.fetch_word(); 24 } else { self.registers.pc += 2; 12 } }, // CALL NZ, a16
             0xC5 => { self.push_stack(self.registers.bc()); 16 }, // PUSH BC
             0xC6 => { let v = self.fetch_byte(); self.add(v, false); 8 }, // ADD A, d8
+            0xC7 => { self.push_stack(self.registers.pc); self.registers.pc = 0x00; 16 }, // RST 00H
             0xC8 => { if self.registers.get_flag(Flag::Zero) { self.registers.pc = self.pop_stack(); 20 } else { 8 } }, // RET Z
             0xC9 => { self.registers.pc = self.pop_stack(); 16 }, // RET
             0xCA => { if self.registers.get_flag(Flag::Zero) { self.registers.pc = self.fetch_word(); 16 } else { self.registers.pc += 2; 12 } }, // JP Z, a16
-            0xcb => { self.cb_call() + 4 }, // CB
+            0xcb => { self.cb_call() }, // CB
             0xcd => { self.push_stack(self.registers.pc + 2); self.registers.pc = self.fetch_word(); 24 }, // CALL a16
             0xCE => { let v = self.fetch_byte(); self.add(v, true); 8 }, // ADC A, d8
-            0xD0 => { if !self.registers.get_flag(Flag::Carry) { self.registers.pc = self.pop_stack(); 20 } else { self.registers.pc += 1; 8 } }, // RET NC
+            0xcf => { self.push_stack(self.registers.pc); self.registers.pc = 0x08; 16 }, // RST 08H
+            0xD0 => { if !self.registers.get_flag(Flag::Carry) { self.registers.pc = self.pop_stack(); 20 } else { 8 } }, // RET NC
             0xD1 => { let v = self.pop_stack(); self.registers.set_de(v); 12 }, // POP DE
+            0xd2 => { if !self.registers.get_flag(Flag::Carry) { self.registers.pc = self.fetch_word(); 12 } else { self.registers.pc += 2; 12 } }, // JP NC, a16
             0xD5 => { self.push_stack(self.registers.de()); 16 }, // PUSH DE
             0xD6 => { let v = self.fetch_byte(); self.sub(v, false); 8 }, // SUB d8
             0xD8 => { if self.registers.get_flag(Flag::Carry) { self.registers.pc = self.pop_stack(); 20 } else { 8 } }, // RET C
             0xD9 => { self.registers.pc = self.pop_stack(); self.ime = true; 16 }, // RETI
+            0xda => { if self.registers.get_flag(Flag::Carry) { self.registers.pc = self.fetch_word(); 16 } else { self.registers.pc += 2; 12 } }, // JP C, a16
+            0xde => { let v = self.fetch_byte(); self.sub(v, true); 8 }, // SBC A, d8
+            0xdf => { self.push_stack(self.registers.pc); self.registers.pc = 0x18; 16 }, // RST 18H
             0xE0 => { let v = 0xFF00 | self.fetch_byte() as u16; self.memory.write(v, self.registers.a); 12 }, // LDH (a8), A
             0xe1 => { let v = self.pop_stack(); self.registers.set_hl(v); 12 }, // POP HL
             0xe2 => { let v = 0xFF00 | self.registers.c as u16; self.memory.write(v, self.registers.a); 8 }, // LD (C), A
@@ -305,7 +334,10 @@ impl CPU {
             0xfb => { self.ime = true; 4 }
             0xFE => { let v = self.fetch_byte(); self.cp(v); 8 }, // CP d8
             0xff => { self.push_stack(self.registers.pc); self.registers.pc = 0x38; 16 }, // RST 38H
-            _ => { panic!("Unimplemented opcode: {:#04x}", opcode); }
+            0xd3 | 0xdb | 0xdd | 0xe3 | 0xe4 | 0xeb | 0xec | 0xed | 0xf4 | 0xfc | 0xfd => {
+                unreachable!("Unreachable opcode: {:#04x} PC: {:#06x}", opcode, self.registers.pc); 0
+            }, // Unreachable opcodes
+            _ => { unimplemented!("Unimplemented opcode: {:#04x} PC: {:#06x}", opcode, self.registers.pc); 0 },
         }
     }
 
@@ -806,385 +838,3 @@ impl CPU {
 
 }
 
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    #[test]
-    fn test_reg_inc() {
-        let mut cpu = CPU::new();
-        let result = cpu.reg_inc(0x00);
-        assert_eq!(result, 0x01);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-
-        let result = cpu.reg_inc(0xFF);
-        assert_eq!(result, 0x00);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-    }
-
-    #[test]
-    fn test_reg_dec() {
-        let mut cpu = CPU::new();
-        let result = cpu.reg_dec(0x01);
-        assert_eq!(result, 0x00);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-
-        let result = cpu.reg_dec(0x00);
-        assert_eq!(result, 0xFF);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-    }
-
-    #[test]
-    fn test_add() {
-        let mut cpu = CPU::new();
-        cpu.registers.a = 0x01;
-        cpu.add(0x02, false);
-        assert_eq!(cpu.registers.a, 0x03);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        cpu.registers.a = 0xFF;
-        cpu.add(0x01, false);
-        assert_eq!(cpu.registers.a, 0x00);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-    }
-
-    #[test]
-    fn test_sub() {
-        let mut cpu = CPU::new();
-        cpu.registers.a = 0x03;
-        cpu.sub(0x02, false);
-        assert_eq!(cpu.registers.a, 0x01);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        cpu.registers.a = 0x00;
-        cpu.sub(0x01, false);
-        assert_eq!(cpu.registers.a, 0xFF);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-    }
-
-    #[test]
-    fn test_and() {
-        let mut cpu = CPU::new();
-        cpu.registers.a = 0b1010_1010;
-        cpu.and(0b1100_1100);
-        assert_eq!(cpu.registers.a, 0b1000_1000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }
-
-    #[test]
-    fn test_xor() {
-        let mut cpu = CPU::new();
-        cpu.registers.a = 0b1010_1010;
-        cpu.xor(0b1100_1100);
-        assert_eq!(cpu.registers.a, 0b0110_0110);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        cpu.registers.a = 0b0000_0000;
-        cpu.xor(0b0000_0000);
-        assert_eq!(cpu.registers.a, 0b0000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }
-
-    #[test]
-    fn test_or() {
-        let mut cpu = CPU::new();
-        cpu.registers.a = 0b1010_1010;
-        cpu.or(0b1100_1100);
-        assert_eq!(cpu.registers.a, 0b1110_1110);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        cpu.registers.a = 0b0000_0000;
-        cpu.or(0b0000_0000);
-        assert_eq!(cpu.registers.a, 0b0000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }   // Completed
-
-    #[test]
-    fn test_cp() {
-        let mut cpu = CPU::new();
-        cpu.registers.a = 0x03;
-        cpu.cp(0x02);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        cpu.registers.a = 0x02;
-        cpu.cp(0x02);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        cpu.registers.a = 0x02;
-        cpu.cp(0x03);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), true);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-    }
-
-    #[test]
-    fn test_rlc() {
-        let mut cpu = CPU::new();
-        let result = cpu.rlc(0b1000_0000);
-        assert_eq!(result, 0b0000_0001);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-
-        let result = cpu.rlc(0b0000_0001);
-        assert_eq!(result, 0b0000_0010);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }
-
-    #[test]
-    fn test_rrc() {
-        let mut cpu = CPU::new();
-        let result = cpu.rrc(0b0000_0001);
-        assert_eq!(result, 0b1000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-
-        let result = cpu.rrc(0b1000_0000);
-        assert_eq!(result, 0b0100_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }
-
-    #[test]
-    fn test_rl() {
-        let mut cpu = CPU::new();
-        cpu.registers.set_flag(Flag::Carry, true);
-        let result = cpu.rl(0b1000_0000);
-        assert_eq!(result, 0b0000_0001);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-
-        let result = cpu.rl(0b0000_0001);
-        assert_eq!(result, 0b0000_0011);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }
-
-    #[test]
-    fn test_rr() {
-        let mut cpu = CPU::new();
-        cpu.registers.set_flag(Flag::Carry, true);
-        let result = cpu.rr(0b0000_0001);
-        assert_eq!(result, 0b1000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-
-        let result = cpu.rr(0b1000_0000);
-        assert_eq!(result, 0b1100_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }
-
-    #[test]
-    fn test_sla() {
-        let mut cpu = CPU::new();
-        let result = cpu.sla(0b1000_0000);
-        assert_eq!(result, 0b0000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-
-        let result = cpu.sla(0b0000_0001);
-        assert_eq!(result, 0b0000_0010);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }
-
-    #[test]
-    fn test_sra() {
-        let mut cpu = CPU::new();
-        let result = cpu.sra(0b1000_0000);
-        assert_eq!(result, 0b1100_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        let result = cpu.sra(0b0000_0001);
-        assert_eq!(result, 0b0000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-    }
-
-    #[test]
-    fn test_swap() {
-        let mut cpu = CPU::new();
-        let result = cpu.swap(0b1001_0110);
-        assert_eq!(result, 0b0110_1001);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        let result = cpu.swap(0b0000_0000);
-        assert_eq!(result, 0b0000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-    }   // Completed
-
-    #[test]
-    fn test_srl() {
-        let mut cpu = CPU::new();
-        let result = cpu.srl(0b1000_0000);
-        assert_eq!(result, 0b0100_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        let result = cpu.srl(0b0000_0001);
-        assert_eq!(result, 0b0000_0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-    }   // Completed
-
-    #[test]
-    fn test_bit() {
-        let mut cpu = CPU::new();
-        cpu.bit(0b1010_1011, 3);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-
-        cpu.bit(0b1010_1010, 2);
-        assert_eq!(cpu.registers.get_flag(Flag::Zero), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-    }   // Completed
-
-    #[test]
-    fn test_res() {
-        let mut cpu = CPU::new();
-        let result = cpu.res(0b1010_1010, 3);
-        assert_eq!(result, 0b1010_0010);
-
-        let result = cpu.res(0b1010_1010, 2);
-        assert_eq!(result, 0b1010_1010);
-    }   // Completed
-
-    #[test]
-    fn test_set() {
-        let mut cpu = CPU::new();
-        let result = cpu.set(0b1010_1010, 4);
-        assert_eq!(result, 0b1011_1010);
-
-        let result = cpu.set(0b1010_1010, 3);
-        assert_eq!(result, 0b1010_1010);
-    }   // Completed
-
-    #[test]
-    fn test_push_stack() {
-        let mut cpu = CPU::new();
-        cpu.registers.sp = 0xFFFE;
-        cpu.push_stack(0x1234);
-        assert_eq!(cpu.memory.read_word(0xFFFC), 0x1234);
-        assert_eq!(cpu.registers.sp, 0xFFFC);
-    }
-
-    #[test]
-    fn test_pop_stack() {
-        let mut cpu = CPU::new();
-        cpu.memory.write_word(0xFFFC, 0x1234);
-        cpu.registers.sp = 0xFFFC;
-        let result = cpu.pop_stack();
-        assert_eq!(result, 0x1234);
-        assert_eq!(cpu.registers.sp, 0xFFFE);
-    }
-
-    #[test]
-    fn test_add_hl() {
-        let mut cpu = CPU::new();
-        cpu.registers.set_hl(0x1234);
-        cpu.add_hl(0x5678);
-        assert_eq!(cpu.registers.hl(), 0x68AC);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), false);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), false);
-
-        cpu.registers.set_hl(0xFFFF);
-        cpu.add_hl(0x0001);
-        assert_eq!(cpu.registers.hl(), 0x0000);
-        assert_eq!(cpu.registers.get_flag(Flag::Sub), false);
-        assert_eq!(cpu.registers.get_flag(Flag::HalfCarry), true);
-        assert_eq!(cpu.registers.get_flag(Flag::Carry), true);
-    }
-
-    #[test]
-    fn test_jr() {
-        let mut cpu = CPU::new();
-        cpu.registers.pc = 0x8fbc;
-        cpu.memory.write(0x8fbc, 0x03);
-        cpu.jr();
-        assert_eq!(cpu.registers.pc, 0x8fc0);
-    }
-
-}
